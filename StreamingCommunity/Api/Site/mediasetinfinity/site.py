@@ -49,8 +49,10 @@ def title_search(query: str) -> int:
         sys.exit(0)
 
     # Check if beToken is present
-    if config_manager.get_dict("SITE_LOGIN", "mediasetinfinity")["beToken"] is None or config_manager.get_dict("SITE_LOGIN", "mediasetinfinity")["beToken"] == "":
-        console.print(f"[bold red] beToken is missing or empty.[/bold red]")
+    if (config_manager.get_dict("SITE_LOGIN", "mediasetinfinity")["beToken"] is None or config_manager.get_dict("SITE_LOGIN", "mediasetinfinity")["beToken"] == "") and \
+            (config_manager.get_dict("SITE_LOGIN", "mediasetinfinity").get("username") is None or config_manager.get_dict("SITE_LOGIN", "mediasetinfinity").get("username") == "" \
+            or config_manager.get_dict("SITE_LOGIN", "mediasetinfinity").get("password") is None or config_manager.get_dict("SITE_LOGIN", "mediasetinfinity").get("password") == ""):
+        console.print(f"[bold red] beToken or credentials are missing or empty.[/bold red]")
         sys.exit(0)
 
     search_url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/reco/account/v2.0'

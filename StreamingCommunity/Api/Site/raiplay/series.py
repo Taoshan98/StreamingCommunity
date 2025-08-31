@@ -11,7 +11,7 @@ from rich.prompt import Prompt
 
 
 # Internal utilities
-from StreamingCommunity.Util.headers import get_headers
+from StreamingCommunity.Util.headers import get_headers, get_userAgent
 from StreamingCommunity.Util.os import get_wvd_path
 from StreamingCommunity.Util.message import start_message
 
@@ -92,17 +92,21 @@ def download_video(index_season_selected: int, index_episode_selected: int, scra
             console.print(f"[bold red] CDM file not found or invalid path: {cdm_device_path}[/bold red]")
             sys.exit(0)
 
-        license_url = generate_license_url(obj_episode.mpd_id)
+        full_license_url = generate_license_url(obj_episode.mpd_id)
+        license_headers = {
+            'nv-authorizations': full_license_url.split("?")[1].split("=")[1],
+            'user-agent': get_userAgent(),
+        }
 
         dash_process = DASH_Downloader(
             cdm_device=cdm_device_path,
-            license_url=license_url,
+            license_url=full_license_url.split("?")[0],
             mpd_url=master_playlist,
             output_path=os.path.join(mp4_path, mp4_name),
         )
         dash_process.parse_manifest(custom_headers=get_headers())
         
-        if dash_process.download_and_decrypt():
+        if dash_process.download_and_decrypt(custom_headers=license_headers):
             dash_process.finalize_output()
 
         # Get final output path and status

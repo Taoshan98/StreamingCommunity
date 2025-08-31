@@ -1,11 +1,14 @@
 # 16.03.25
 
+import json
 from urllib.parse import urlencode
 import xml.etree.ElementTree as ET
 
 
 # External library
 import httpx
+from rich.console import Console
+from playwright.sync_api import sync_playwright
 
 
 # Internal utilities
@@ -14,8 +17,73 @@ from StreamingCommunity.Util.headers import get_headers, get_userAgent
 
 
 # Variable
+console = Console()
 MAX_TIMEOUT = config_manager.get_int("REQUESTS", "timeout")
+beToken = None
 
+
+def generate_betoken(username: str, password: str) -> str | None:
+    with sync_playwright() as p:
+
+        console.print("[cyan]Launching browser...")
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        be_token_holder = {"token": None}
+
+        def handle_response(response):
+            if "persona/login/v2.0" in response.url and response.request.method == "POST":
+                try:
+                    raw = response.text()
+                    data = json.loads(raw)
+                    be_token = data.get("response", {}).get("beToken")
+                    
+                    if be_token:
+                        be_token_holder["token"] = be_token
+                        
+                except Exception as e:
+                    print("Errore nel parsing beToken:", e)
+
+        # Load home page
+        console.print("[cyan]Navigating to Mediaset Play...")
+        page.goto("https://www.mediasetplay.mediaset.it")
+        page.wait_for_load_state("networkidle")
+
+        try:
+            page.locator("#rti-privacy-accept-btn-screen1-id").click(timeout=0)
+        except Exception:
+            pass
+
+        try:
+            page.locator("text=Login").click(timeout=3000)
+        except Exception:
+            pass
+
+        # page.wait_for_timeout(1000)
+        try:
+            page.locator("text=Accedi con email e password").click(timeout=3000)
+        except Exception:
+            pass
+
+        # page.wait_for_timeout(1000)
+        console.print("[cyan]Filling login credentials...")
+        page.locator("input[name='username']:visible").fill(username)
+        page.locator("input[name='password']:visible").fill(password)
+        page.on("response", handle_response)
+
+        try:
+            page.locator("text=Continua").click(timeout=3000)
+        except Exception:
+            pass
+
+        for _ in range(10):
+            if be_token_holder["token"]:
+                console.print("[green]Login successful!")
+                break
+                
+            page.wait_for_timeout(500)
+
+        browser.close()
+        return be_token_holder["token"]
 
 def get_bearer_token():
     """
@@ -24,6 +92,20 @@ def get_bearer_token():
     Returns:
         str: The bearer token string.
     """
+    global beToken
+
+    if beToken is not None:
+        return beToken
+        
+    username = config_manager.get_dict("SITE_LOGIN", "mediasetinfinity").get("username", "")
+    password = config_manager.get_dict("SITE_LOGIN", "mediasetinfinity").get("password", "")
+    
+    if username and password:
+        beToken = generate_betoken(username, password)
+        
+        if beToken is not None:
+            return beToken
+            
     return config_manager.get_dict("SITE_LOGIN", "mediasetinfinity")["beToken"]
 
 def get_playback_url(BEARER_TOKEN, CONTENT_ID):

@@ -34,6 +34,9 @@ def get_user_input(string_to_search: str = None):
     """
     Asks the user to input a search term.
     """
+    if string_to_search is not None:
+        return string_to_search.strip()
+        
     return msg.ask(f"\n[purple]Insert a word to search in [green]{site_constant.SITE_NAME}").strip()
 
 def process_search_result(select_title, selections=None):

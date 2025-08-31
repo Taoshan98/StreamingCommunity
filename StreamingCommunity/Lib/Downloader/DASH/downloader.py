@@ -94,12 +94,35 @@ class DASH_Downloader:
         self.error = None
         self.stopped = False
 
+        # Fetch keys immediately after obtaining PSSH
+        if not self.parser.pssh:
+            console.print("[red]No PSSH found: segments are not encrypted, skipping decryption.")
+            self.download_segments(clear=True)
+            return True
+
+        keys = get_widevine_keys(
+            pssh=self.parser.pssh,
+            license_url=self.license_url,
+            cdm_device_path=self.cdm_device,
+            headers=custom_headers,
+            payload=custom_payload
+        )
+
+        if not keys:
+            console.print(f"[red]No keys found, cannot proceed with download.[/red]")
+            return False
+
+        # Extract the first key for decryption
+        key = keys[0]
+        KID = key['kid']
+        KEY = key['key']
+
         for typ in ["video", "audio"]:
             rep = self.get_representation_by_type(typ)
             if rep:
                 encrypted_path = os.path.join(self.encrypted_dir, f"{rep['id']}_encrypted.m4s")
 
-                # If m4s file doesn't exist start downloading
+                # If m4s file doesn't exist, start downloading
                 if not os.path.exists(encrypted_path):
                     downloader = MPD_Segments(
                         tmp_folder=self.encrypted_dir,
@@ -123,28 +146,6 @@ class DASH_Downloader:
                     except Exception as ex:
                         self.error = str(ex)
                         return False
-
-                if not self.parser.pssh:
-                    print("No PSSH found: segments are not encrypted, skipping decryption.")
-                    self.download_segments(clear=True)
-                    return True
-
-                keys = get_widevine_keys(
-                    pssh=self.parser.pssh,
-                    license_url=self.license_url,
-                    cdm_device_path=self.cdm_device,
-                    headers=custom_headers,
-                    payload=custom_payload
-                )
-                
-                if not keys:
-                    self.error = f"No key found, cannot decrypt {typ}"
-                    print(self.error)
-                    return False
-
-                key = keys[0]
-                KID = key['kid']
-                KEY = key['key']
 
                 decrypted_path = os.path.join(self.decrypted_dir, f"{typ}.mp4")
                 result_path = decrypt_with_mp4decrypt(
