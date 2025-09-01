@@ -47,15 +47,16 @@ def has_audio_stream(video_path: str) -> bool:
         return False
 
 
-def get_video_duration(file_path: str) -> float:
+def get_video_duration(file_path: str, file_type: str = "file") -> float:
     """
-    Get the duration of a video file.
+    Get the duration of a media file (video or audio).
 
     Parameters:
-        - file_path (str): The path to the video file.
+        - file_path (str): The path to the media file.
+        - file_type (str): The type of the file ('video' or 'audio'). Defaults to 'file'.
 
     Returns:
-        (float): The duration of the video in seconds if successful, None if there's an error.
+        (float): The duration of the media file in seconds if successful, None if there's an error.
     """
     try:
         ffprobe_cmd = [get_ffprobe_path(), '-v', 'error', '-show_format', '-print_format', 'json', file_path]
@@ -64,23 +65,23 @@ def get_video_duration(file_path: str) -> float:
         # Use a with statement to ensure the subprocess is cleaned up properly
         with subprocess.Popen(ffprobe_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as proc:
             stdout, stderr = proc.communicate()
-            
+
             if proc.returncode != 0:
                 logging.error(f"Error: {stderr}")
                 return None
-            
+
             # Parse JSON output
             probe_result = json.loads(stdout)
 
-            # Extract duration from the video information
+            # Extract duration from the media information
             try:
                 return float(probe_result['format']['duration'])
-            
+
             except Exception:
                 return 1
 
     except Exception as e:
-        logging.error(f"Get video duration error: {e}, ffprobe path: {get_ffprobe_path()}, file path: {file_path}")
+        logging.error(f"Get {file_type} duration error: {e}, ffprobe path: {get_ffprobe_path()}, file path: {file_path}")
         sys.exit(0)
 
 
@@ -242,8 +243,8 @@ def check_duration_v_a(video_path, audio_path, tolerance=1.0):
     Returns:
         - tuple: (bool, float) -> True if the duration of the video and audio matches, False otherwise, along with the difference in duration.
     """
-    video_duration = get_video_duration(video_path)
-    audio_duration = get_video_duration(audio_path)
+    video_duration = get_video_duration(video_path, file_type="video")
+    audio_duration = get_video_duration(audio_path, file_type="audio")
 
     # Check if either duration is None and specify which one is None
     if video_duration is None and audio_duration is None:
