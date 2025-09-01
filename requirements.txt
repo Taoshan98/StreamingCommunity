@@ -14,4 +14,4 @@ ua-generator
 qbittorrent-api
 pyTelegramBotAPI
 pywidevine
-playwright
+seleniumbase

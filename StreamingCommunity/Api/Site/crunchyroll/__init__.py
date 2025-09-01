@@ -37,10 +37,28 @@ def get_user_input(string_to_search: str = None):
     Asks the user to input a search term.
     Handles both Telegram bot input and direct input.
     """
-    if string_to_search is None:
-        string_to_search = msg.ask(f"\n[purple]Insert a word to search in [green]{site_constant.SITE_NAME}").strip()
+    if string_to_search is not None:
+        return string_to_search.strip()
 
-    return string_to_search
+    if string_to_search is None:
+        if site_constant.TELEGRAM_BOT:
+            bot = get_bot_instance()
+            string_to_search = bot.ask(
+                "key_search",
+                "Enter the search term\nor type 'back' to return to the menu: ",
+                None
+            )
+
+            if string_to_search == 'back':
+
+                # Restart the script
+                subprocess.Popen([sys.executable] + sys.argv)
+                sys.exit()
+
+            return user_response.strip()
+        
+    else:
+        return msg.ask(f"\n[purple]Insert a word to search in [green]{site_constant.SITE_NAME}").strip()
 
 def process_search_result(select_title, selections=None):
     """
@@ -74,16 +92,6 @@ def process_search_result(select_title, selections=None):
 
 # search("Game of Thrones", selections={"season": "1", "episode": "1-3"})
 def search(string_to_search: str = None, get_onlyDatabase: bool = False, direct_item: dict = None, selections: dict = None):
-    """
-    Main function of the application for search.
-
-    Parameters:
-        string_to_search (str, optional): String to search for
-        get_onlyDatabase (bool, optional): If True, return only the database object
-        direct_item (dict, optional): Direct item to process (bypass search)
-        selections (dict, optional): Dictionary containing selection inputs that bypass manual input
-                                    {'season': season_selection, 'episode': episode_selection}
-    """
     """
     Main function of the application for search.
 

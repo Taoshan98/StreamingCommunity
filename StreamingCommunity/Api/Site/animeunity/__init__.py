@@ -38,6 +38,9 @@ def get_user_input(string_to_search: str = None):
     Asks the user to input a search term.
     Handles both Telegram bot input and direct input.
     """
+    if string_to_search is not None:
+        return string_to_search.strip()
+
     if string_to_search is None:
         if site_constant.TELEGRAM_BOT:
             bot = get_bot_instance()
@@ -52,10 +55,11 @@ def get_user_input(string_to_search: str = None):
                 # Restart the script
                 subprocess.Popen([sys.executable] + sys.argv)
                 sys.exit()
-        else:
-            string_to_search = msg.ask(f"\n[purple]Insert a word to search in [green]{site_constant.SITE_NAME}").strip()
 
-    return string_to_search
+            return user_response.strip()
+        
+    else:
+        return msg.ask(f"\n[purple]Insert a word to search in [green]{site_constant.SITE_NAME}").strip()
 
 def process_search_result(select_title, selections=None):
     """

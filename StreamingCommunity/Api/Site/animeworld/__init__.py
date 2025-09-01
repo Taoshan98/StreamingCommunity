@@ -29,7 +29,34 @@ msg = Prompt()
 console = Console()
 
 
+def get_user_input(string_to_search: str = None):
+    """
+    Asks the user to input a search term.
+    Handles both Telegram bot input and direct input.
+    """
+    if string_to_search is not None:
+        return string_to_search.strip()
 
+    if string_to_search is None:
+        if site_constant.TELEGRAM_BOT:
+            bot = get_bot_instance()
+            string_to_search = bot.ask(
+                "key_search",
+                "Enter the search term\nor type 'back' to return to the menu: ",
+                None
+            )
+
+            if string_to_search == 'back':
+
+                # Restart the script
+                subprocess.Popen([sys.executable] + sys.argv)
+                sys.exit()
+
+            return user_response.strip()
+        
+    else:
+        return msg.ask(f"\n[purple]Insert a word to search in [green]{site_constant.SITE_NAME}").strip()
+    
 def process_search_result(select_title, selections=None):
     """
     Handles the search result and initiates the download for either a film or series.
@@ -77,10 +104,7 @@ def search(string_to_search: str = None, get_onlyDatabase: bool = False, direct_
         return
 
     # Get the user input for the search term
-    if string_to_search is None:
-        actual_search_query = msg.ask(f"\n[purple]Insert a word to search in [green]{site_constant.SITE_NAME}").strip()
-    else:
-        actual_search_query = string_to_search
+    actual_search_query = get_user_input(string_to_search)
 
     # Perform the database search
     if not actual_search_query:

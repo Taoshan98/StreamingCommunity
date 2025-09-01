@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 # External library
 import httpx
 from rich.console import Console
-from playwright.sync_api import sync_playwright
+from seleniumbase import Driver
 
 
 # Internal utilities
@@ -20,70 +20,139 @@ from StreamingCommunity.Util.headers import get_headers, get_userAgent
 console = Console()
 MAX_TIMEOUT = config_manager.get_int("REQUESTS", "timeout")
 beToken = None
+network_data = []
 
 
-def generate_betoken(username: str, password: str) -> str | None:
-    with sync_playwright() as p:
+def save_network_data(data):
+    """Save network data and check for beToken"""
+    global network_data
+    
+    # Filter only for login API responses
+    if data.get('method') == 'Network.responseReceived':
+        params = data.get('params', {})
+        response = params.get('response', {})
+        url = response.get('url', '')
+        
+        if "persona/login/v2.0" in url and params.get('type') != 'Preflight':
+            network_data.append(data)
+            console.print(f"[green]Found login API request to: {url}")
 
+
+def generate_betoken(username: str, password: str, sleep_action: float = 1.0) -> str:
+    driver = Driver(uc=True, uc_cdp_events=True, incognito=True, headless=True)
+    
+    try:
         console.print("[cyan]Launching browser...")
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
         be_token_holder = {"token": None}
-
-        def handle_response(response):
-            if "persona/login/v2.0" in response.url and response.request.method == "POST":
-                try:
-                    raw = response.text()
-                    data = json.loads(raw)
-                    be_token = data.get("response", {}).get("beToken")
-                    
-                    if be_token:
-                        be_token_holder["token"] = be_token
-                        
-                except Exception as e:
-                    print("Errore nel parsing beToken:", e)
+        global network_data
+        network_data = []  # Reset network data
 
         # Load home page
         console.print("[cyan]Navigating to Mediaset Play...")
-        page.goto("https://www.mediasetplay.mediaset.it")
-        page.wait_for_load_state("networkidle")
+        driver.uc_open_with_reconnect("https://www.mediasetplay.mediaset.it", sleep_action)
+        
+        # Add CDP listeners after opening the page
+        driver.add_cdp_listener(
+            "Network.responseReceived",
+            lambda data: save_network_data(data)
+        )
+        driver.sleep(sleep_action)
 
+        # Accept privacy policy if present
         try:
-            page.locator("#rti-privacy-accept-btn-screen1-id").click(timeout=0)
+            driver.click("#rti-privacy-accept-btn-screen1-id", timeout=3)
         except Exception:
             pass
 
+        # Click Login using the specific div structure
+        console.print("[cyan]Clicking login button...")
         try:
-            page.locator("text=Login").click(timeout=3000)
-        except Exception:
-            pass
+            driver.click('div.dwv_v span:contains("Login")', timeout=5)
+        except Exception as e:
+            print(f"Error clicking login: {e}")
+            try:
+                driver.click('div.dwv_v', timeout=3)
+            except Exception:
+                pass
 
-        # page.wait_for_timeout(1000)
+        driver.sleep(sleep_action)
+
+        # Click "Accedi con email e password" using the specific input
+        console.print("[cyan]Clicking email/password login...")
         try:
-            page.locator("text=Accedi con email e password").click(timeout=3000)
-        except Exception:
-            pass
+            driver.click('input.gigya-input-submit[value="Accedi con email e password"]', timeout=5)
+        except Exception as e:
+            print(f"Error clicking email login: {e}")
+            return None
 
-        # page.wait_for_timeout(1000)
+        driver.sleep(sleep_action)
+
+        # Fill login credentials using specific IDs
         console.print("[cyan]Filling login credentials...")
-        page.locator("input[name='username']:visible").fill(username)
-        page.locator("input[name='password']:visible").fill(password)
-        page.on("response", handle_response)
-
         try:
-            page.locator("text=Continua").click(timeout=3000)
-        except Exception:
-            pass
+            email_input = 'input[name="username"].gigya-input-text'
+            driver.wait_for_element(email_input, timeout=5)
+            driver.type(email_input, username)
+            
+            password_input = 'input[name="password"].gigya-input-password'
+            driver.wait_for_element(password_input, timeout=5)
+            driver.type(password_input, password)
+            
+        except Exception as e:
+            print(f"Error filling credentials: {e}")
+            return None
 
-        for _ in range(10):
-            if be_token_holder["token"]:
-                console.print("[green]Login successful!")
-                break
-                
-            page.wait_for_timeout(500)
+        driver.sleep(sleep_action)
 
-        browser.close()
+        # Click Continue/Procedi using the submit button
+        console.print("[cyan]Clicking continue button...")
+        try:
+            driver.click('input.gigya-input-submit[type="submit"][value="Continua"]', timeout=5)
+        except Exception as e:
+            print(f"Error clicking continue: {e}")
+            return None
+
+        # Wait for login response and parse network data
+        console.print("[cyan]Waiting for login response...")
+        for attempt in range(30):
+            driver.sleep(0.3)
+            
+            # Check network data for beToken - skip preflight requests
+            for data in network_data:
+                if data.get('method') == 'Network.responseReceived':
+                    params = data.get('params', {})
+                    response = params.get('response', {})
+                    url = response.get('url', '')
+                    request_type = params.get('type', '')
+                    
+                    if "persona/login/v2.0" in url and request_type != 'Preflight':
+                        request_id = params.get('requestId')
+                        
+                        if request_id:
+                            try:
+                                response_body = driver.execute_cdp_cmd(
+                                    'Network.getResponseBody', 
+                                    {'requestId': request_id}
+                                )
+                                body = response_body.get('body', '')
+
+                                if body:
+                                    response_data = json.loads(body)
+                                    be_token = response_data.get("response", {}).get("beToken")
+
+                                    if be_token:
+                                        be_token_holder["token"] = be_token
+                                        console.print("[green]Login successful! BeToken found!")
+                                        return be_token
+                                    
+                            except Exception:
+                                continue
+
+        console.print(f"[yellow]Login completed. Total network events captured: {len(network_data)}")
         return be_token_holder["token"]
+        
+    finally:
+        driver.quit()
 
 def get_bearer_token():
     """
@@ -104,6 +173,13 @@ def get_bearer_token():
         beToken = generate_betoken(username, password)
         
         if beToken is not None:
+
+            # Save current beToken
+            current_value = config_manager.get("SITE_LOGIN", "mediasetinfinity", dict)
+            current_value["beToken"] = beToken
+            config_manager.set_key("SITE_LOGIN", "mediasetinfinity", current_value)
+            config_manager.save_config()
+
             return beToken
             
     return config_manager.get_dict("SITE_LOGIN", "mediasetinfinity")["beToken"]

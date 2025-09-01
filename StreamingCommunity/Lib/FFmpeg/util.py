@@ -80,7 +80,7 @@ def get_video_duration(file_path: str) -> float:
                 return 1
 
     except Exception as e:
-        logging.error(f"Get video duration error: {e}")
+        logging.error(f"Get video duration error: {e}, ffprobe path: {get_ffprobe_path()}, file path: {file_path}")
         sys.exit(0)
 
 
