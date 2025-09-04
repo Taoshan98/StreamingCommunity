@@ -6,11 +6,17 @@ import shutil
 
 # External libraries
 from rich.console import Console
+from rich.panel import Panel
 
 
 # Internal utilities
 from StreamingCommunity.Util.config_json import config_manager
-from StreamingCommunity.Lib.FFmpeg.command import join_audios, join_video
+from StreamingCommunity.Util.os import os_manager, internet_manager
+from ...FFmpeg import (
+    print_duration_table,
+    join_video,
+    join_audios
+)
 
 
 # Logic class
@@ -18,6 +24,7 @@ from .parser import MPDParser
 from .segments import MPD_Segments
 from .decrypt import decrypt_with_mp4decrypt
 from .cdm_helpher import get_widevine_keys
+
 
 
 # Config
@@ -35,8 +42,8 @@ class DASH_Downloader:
         self.cdm_device = cdm_device
         self.license_url = license_url
         self.mpd_url = mpd_url
-        self.original_output_path = os.path.abspath(str(output_path))
-        self.out_path = os.path.splitext(self.original_output_path)[0]
+        self.out_path = os.path.splitext(os.path.abspath(str(output_path)))[0]
+        self.original_output_path = output_path + ".mp4" if not str(output_path).lower().endswith(".mp4") else output_path
         self.parser = None
         self._setup_temp_dirs()
 
@@ -173,43 +180,72 @@ class DASH_Downloader:
         video_file = os.path.join(self.decrypted_dir, "video.mp4")
         audio_file = os.path.join(self.decrypted_dir, "audio.mp4")
 
-        # fallback: if one of the two is missing, look in encrypted
-        if not os.path.exists(video_file):
-            for f in os.listdir(self.encrypted_dir):
-                if f.endswith("_encrypted.m4s") and ("video" in f or f.startswith("1_")):
-                    video_file = os.path.join(self.encrypted_dir, f)
-                    break
-        if not os.path.exists(audio_file):
-            for f in os.listdir(self.encrypted_dir):
-                if f.endswith("_encrypted.m4s") and ("audio" in f or f.startswith("0_")):
-                    audio_file = os.path.join(self.encrypted_dir, f)
-                    break
-
-        # Usa il nome file originale per il file finale
+        # Use the original output path for the final file
         output_file = self.original_output_path
+        
+        # Set the output file path for status tracking
+        self.output_file = output_file
+        use_shortest = False
 
         if os.path.exists(video_file) and os.path.exists(audio_file):
             audio_tracks = [{"path": audio_file}]
-            join_audios(video_file, audio_tracks, output_file)
+            out_audio_path, use_shortest = join_audios(video_file, audio_tracks, output_file)
+
         elif os.path.exists(video_file):
-            join_video(video_file, output_file, codec=None)
+            out_video_path = join_video(video_file, output_file, codec=None)
+            
         else:
             print("Video file missing, cannot export")
+            return None
 
-        # Clean up: delete all tmp
+        # Handle failed sync case
+        if use_shortest:
+            new_filename = output_file.replace(".mp4", "_failed_sync.mp4")
+            os.rename(output_file, new_filename)
+            output_file = new_filename
+            self.output_file = new_filename
+
+        # Display file information
+        if os.path.exists(output_file):
+            file_size = internet_manager.format_file_size(os.path.getsize(output_file))
+            duration = print_duration_table(output_file, description=False, return_string=True)
+            panel_content = (
+                f"[cyan]File size: [bold red]{file_size}[/bold red]\n"
+                f"[cyan]Duration: [bold]{duration}[/bold]\n"
+                f"[cyan]Output: [bold]{os.path.abspath(output_file)}[/bold]"
+            )
+            
+            console.print(Panel(
+                panel_content,
+                title=f"{os.path.basename(output_file.replace('.mp4', ''))}",
+                border_style="green"
+            ))
+
+        # Clean up: delete only the tmp directory, not the main directory
         if os.path.exists(self.tmp_dir):
             shutil.rmtree(self.tmp_dir, ignore_errors=True)
 
-        # Rimuovi la cartella principale se è vuota
-        try:
-            if os.path.exists(self.out_path) and not os.listdir(self.out_path):
-                os.rmdir(self.out_path)
-        except Exception as e:
-            print(f"[WARN] Impossibile eliminare la cartella {self.out_path}: {e}")
+        # Only remove the temp base directory if it was created specifically for this download
+        # and if the final output is NOT inside this directory
+        output_dir = os.path.dirname(self.original_output_path)
         
+        # Check if out_path is different from the actual output directory
+        # and if it's empty, then it's safe to remove
+        if (self.out_path != output_dir and 
+            os.path.exists(self.out_path) and 
+            not os.listdir(self.out_path)):
+            try:
+                os.rmdir(self.out_path)
+            except Exception as e:
+                print(f"[WARN] Cannot remove directory {self.out_path}: {e}")
 
-        return self.output_file
-
+        # Verify the final file exists before returning
+        if os.path.exists(output_file):
+            return output_file
+        else:
+            self.error = "Final output file was not created successfully"
+            return None
+    
     def get_status(self):
         """
         Returns a dict with 'path', 'error', and 'stopped' for external use.

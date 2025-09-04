@@ -360,6 +360,7 @@ class MergeManager:
         """
         video_file = os.path.join(self.temp_dir, 'video', '0.ts')
         merged_file = video_file
+        use_shortest = False
 
         if not self.audio_streams and not self.sub_streams:
             merged_file = join_video(
@@ -376,7 +377,7 @@ class MergeManager:
                 } for a in self.audio_streams]
 
                 merged_audio_path = os.path.join(self.temp_dir, 'merged_audio.mp4')
-                merged_file = join_audios(
+                merged_file, use_shortest = join_audios(
                     video_path=video_file,
                     audio_tracks=audio_tracks,
                     out_path=merged_audio_path,
@@ -396,7 +397,7 @@ class MergeManager:
                     out_path=merged_subs_path
                 )
 
-        return merged_file
+        return merged_file, use_shortest
 
 
 class HLS_Downloader:
@@ -467,9 +468,9 @@ class HLS_Downloader:
                 sub_streams=self.m3u8_manager.sub_streams
             )
 
-            final_file = self.merge_manager.merge()
+            final_file, use_shortest = self.merge_manager.merge()
             self.path_manager.move_final_file(final_file)
-            self._print_summary()
+            self._print_summary(use_shortest)
             self.path_manager.cleanup()
 
             return {
@@ -495,7 +496,7 @@ class HLS_Downloader:
                 'stopped': False
             }
 
-    def _print_summary(self):
+    def _print_summary(self, use_shortest):
         """Prints download summary including file size, duration, and any missing segments."""
         if TELEGRAM_BOT:
             bot = get_bot_instance()
@@ -523,7 +524,18 @@ class HLS_Downloader:
 
         if missing_ts:
             panel_content += f"\n{missing_info}"
-            os.rename(self.path_manager.output_path, self.path_manager.output_path.replace(".mp4", "_failed.mp4"))
+            
+        new_filename = self.path_manager.output_path
+        if missing_ts and use_shortest:
+            new_filename = new_filename.replace(".mp4", "_failed_sync_ts.mp4")
+        elif missing_ts:
+            new_filename = new_filename.replace(".mp4", "_failed_ts.mp4")
+        elif use_shortest:
+            new_filename = new_filename.replace(".mp4", "_failed_sync.mp4")
+            
+        if missing_ts or use_shortest:
+            os.rename(self.path_manager.output_path, new_filename)
+            self.path_manager.output_path = new_filename
 
         console.print(Panel(
             panel_content,

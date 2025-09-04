@@ -15,7 +15,7 @@ from StreamingCommunity.Util.os import os_manager, suppress_output, get_ffmpeg_p
 
 
 # Logic class
-from .util import need_to_force_to_ts, check_duration_v_a
+from .util import need_to_force_to_ts, check_duration_v_a, get_video_duration
 from .capture import capture_ffmpeg_real_time
 from ..M3U8 import M3U8_Codec
 
@@ -99,6 +99,14 @@ def join_video(video_path: str, out_path: str, codec: M3U8_Codec = None):
         - out_path (str): The path to save the output file.
         - codec (M3U8_Codec): The video codec to use. Defaults to 'copy'.
     """
+    if video_path is None:
+        console.log("[red]No video path provided for joining.")
+        return None
+    
+    if out_path is None:
+        console.log("[red]No output path provided for joining.")
+        return None
+
     ffmpeg_cmd = [get_ffmpeg_path()]
 
     # Enabled the use of gpu
@@ -175,10 +183,50 @@ def join_audios(video_path: str, audio_tracks: List[Dict[str, str]], out_path: s
     Parameters:
         - video_path (str): The path to the video file.
         - audio_tracks (list[dict[str, str]]): A list of dictionaries containing information about audio tracks.
-            Each dictionary should contain the 'path' key with the path to the audio file.
+            Each dictionary should contain the 'path' and 'name' keys.
         - out_path (str): The path to save the output file.
     """
-    video_audio_same_duration, duration_diff = check_duration_v_a(video_path, audio_tracks[0].get('path'))
+    if video_path is None:
+        console.log("[red]No video path provided for joining audios.")
+        return None, False
+
+    if audio_tracks is None or len(audio_tracks) == 0:
+        console.log("[red]No audio tracks provided for joining.")
+        return None, False
+
+    if out_path is None:
+        console.log("[red]No output path provided for joining audios.")
+        return None, False
+
+    use_shortest = False
+    duration_diffs = []
+    
+    # Get video duration first
+    video_duration = get_video_duration(video_path, None)
+    
+    for audio_track in audio_tracks:
+        audio_path = audio_track.get('path')
+        audio_lang = audio_track.get('name', 'unknown')
+        audio_duration, diff = check_duration_v_a(video_path, audio_path)
+        
+        duration_diffs.append({
+            'language': audio_lang,
+            'difference': diff,
+            'has_error': diff > 0.5,
+            'video_duration': video_duration,
+            'audio_duration': audio_duration
+        })
+        
+        if diff > 0.5:
+            use_shortest = True
+            logging.warning(f"[15:02:43] Warning: Some audio tracks have duration differences (>0.5s)")
+
+    # Print duration differences for each track
+    if use_shortest:
+        for track in duration_diffs:
+            color = "red" if track['has_error'] else "green"
+            console.print(f"[{color}]Audio {track['language']}: Video duration: {track['video_duration']:.2f}s, Audio duration: {track['audio_duration']:.2f}s, Difference: {track['difference']:.2f}s[/{color}]")
+    
 
     # Start command with locate ffmpeg
     ffmpeg_cmd = [get_ffmpeg_path()]
@@ -238,9 +286,8 @@ def join_audios(video_path: str, audio_tracks: List[Dict[str, str]], out_path: s
     else:
         ffmpeg_cmd.extend(['-preset', 'fast'])
 
-    # Use shortest input path for video and audios
-    if not video_audio_same_duration:
-        console.log(f"[red]Use shortest input (Duration difference: {duration_diff:.2f} seconds)...")
+    # Use shortest input path if any audio track has significant difference
+    if use_shortest:
         ffmpeg_cmd.extend(['-shortest', '-strict', 'experimental'])
 
     # Overwrite
@@ -261,7 +308,7 @@ def join_audios(video_path: str, audio_tracks: List[Dict[str, str]], out_path: s
                 capture_ffmpeg_real_time(ffmpeg_cmd, "[cyan]Join audio")
                 print()
 
-    return out_path
+    return out_path, use_shortest
 
 
 def join_subtitle(video_path: str, subtitles_list: List[Dict[str, str]], out_path: str):
@@ -274,6 +321,18 @@ def join_subtitle(video_path: str, subtitles_list: List[Dict[str, str]], out_pat
             Each dictionary should contain the 'path' key with the path to the subtitle file and the 'name' key with the name of the subtitle.
         - out_path (str): The path to save the output file.
     """
+    if video_path is None:
+        console.log("[red]No video path provided for joining subtitles.")
+        return None
+
+    if subtitles_list is None or len(subtitles_list) == 0:
+        console.log("[red]No subtitles provided for joining.")
+        return None
+
+    if out_path is None:
+        console.log("[red]No output path provided for joining subtitles.")
+        return None
+
     ffmpeg_cmd = [get_ffmpeg_path(), "-i", video_path]
 
     # Add subtitle input files first

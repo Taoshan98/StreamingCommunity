@@ -163,6 +163,8 @@ def get_bearer_token():
     """
     global beToken
 
+    # Read beToken from config if already present
+    beToken = config_manager.get_dict("SITE_LOGIN", "mediasetinfinity").get("beToken", "")
     if beToken is not None:
         return beToken
         

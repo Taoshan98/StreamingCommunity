@@ -250,13 +250,15 @@ def check_duration_v_a(video_path, audio_path, tolerance=1.0):
     if video_duration is None and audio_duration is None:
         console.print("[yellow]Warning: Both video and audio durations are None. Returning 0 as duration difference.[/yellow]")
         return False, 0.0
+    
     elif video_duration is None:
         console.print("[yellow]Warning: Video duration is None. Returning 0 as duration difference.[/yellow]")
         return False, 0.0
+    
     elif audio_duration is None:
         console.print("[yellow]Warning: Audio duration is None. Returning 0 as duration difference.[/yellow]")
         return False, 0.0
-
+    
     # Calculate the duration difference
     duration_difference = abs(video_duration - audio_duration)
 

@@ -119,7 +119,7 @@ def search(string_to_search: str = None, get_onlyDatabase: bool = False, direct_
     if direct_item:
         select_title_obj = MediaItem(**direct_item)
         process_search_result(select_title_obj, selections)
-        return
+        return True
     
     actual_search_query = get_user_input(string_to_search)
 
@@ -140,6 +140,7 @@ def search(string_to_search: str = None, get_onlyDatabase: bool = False, direct_
     if len_database > 0:
         select_title = get_select_title(table_show_manager, media_search_manager, len_database)
         process_search_result(select_title, selections)
+        return True
     
     else:
         if bot:

@@ -33,26 +33,36 @@ def get_user_input(string_to_search: str = None):
     """
     Asks the user to input a search term.
     Handles both Telegram bot input and direct input.
+    If string_to_search is provided, it's returned directly (after stripping).
     """
     if string_to_search is not None:
         return string_to_search.strip()
 
-    if string_to_search is None:
-        if site_constant.TELEGRAM_BOT:
-            bot = get_bot_instance()
-            string_to_search = bot.ask(
-                "key_search",
-                "Enter the search term\nor type 'back' to return to the menu: ",
-                None
-            )
+    if site_constant.TELEGRAM_BOT:
+        bot = get_bot_instance()
+        user_response = bot.ask(
+            "key_search", # Request type
+            "Enter the search term\nor type 'back' to return to the menu: ",
+            None
+        )
 
-            if string_to_search == 'back':
+        if user_response is None:
+            bot.send_message("Timeout: No search term entered.", None)
+            return None
 
+        if user_response.lower() == 'back':
+            bot.send_message("Returning to the main menu...", None)
+            
+            try:
                 # Restart the script
                 subprocess.Popen([sys.executable] + sys.argv)
                 sys.exit()
-
-            return user_response.strip()
+                
+            except Exception as e:
+                bot.send_message(f"Error during restart attempt: {e}", None)
+                return None # Return None if restart fails
+        
+        return user_response.strip()
         
     else:
         return msg.ask(f"\n[purple]Insert a word to search in [green]{site_constant.SITE_NAME}").strip()
@@ -101,7 +111,7 @@ def search(string_to_search: str = None, get_onlyDatabase: bool = False, direct_
     if direct_item:
         select_title = MediaItem(**direct_item)
         process_search_result(select_title, selections)
-        return
+        return True
 
     # Get the user input for the search term
     actual_search_query = get_user_input(string_to_search)
@@ -122,6 +132,7 @@ def search(string_to_search: str = None, get_onlyDatabase: bool = False, direct_
     if len_database > 0:
         select_title = get_select_title(table_show_manager, media_search_manager, len_database)
         process_search_result(select_title, selections)
+        return True
 
     else:
         if bot:
