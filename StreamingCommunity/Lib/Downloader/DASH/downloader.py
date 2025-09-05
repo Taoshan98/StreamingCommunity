@@ -43,7 +43,7 @@ class DASH_Downloader:
         self.license_url = license_url
         self.mpd_url = mpd_url
         self.out_path = os.path.splitext(os.path.abspath(str(output_path)))[0]
-        self.original_output_path = output_path + ".mp4" if not str(output_path).lower().endswith(".mp4") else output_path
+        self.original_output_path = output_path
         self.parser = None
         self._setup_temp_dirs()
 

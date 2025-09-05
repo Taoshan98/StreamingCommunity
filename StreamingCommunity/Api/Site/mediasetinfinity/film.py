@@ -60,7 +60,7 @@ def download_film(select_title: MediaItem) -> Tuple[str, bool]:
         cdm_device=get_wvd_path(),
         license_url=license_url,
         mpd_url=mpd_url,
-        output_path=mp4_path,
+        output_path=os.path.join(mp4_path, title_name),
     )
     dash_process.parse_manifest(custom_headers=get_headers())
 

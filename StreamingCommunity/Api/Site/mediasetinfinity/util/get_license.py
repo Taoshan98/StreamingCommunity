@@ -1,6 +1,7 @@
 # 16.03.25
 
 import json
+import time
 from urllib.parse import urlencode
 import xml.etree.ElementTree as ET
 
@@ -164,8 +165,8 @@ def get_bearer_token():
     global beToken
 
     # Read beToken from config if already present
-    beToken = config_manager.get_dict("SITE_LOGIN", "mediasetinfinity").get("beToken", "")
-    if beToken is not None:
+    beToken = config_manager.get_dict("SITE_LOGIN", "mediasetinfinity")["beToken"]
+    if beToken is not None and len(beToken) != 0:
         return beToken
         
     username = config_manager.get_dict("SITE_LOGIN", "mediasetinfinity").get("username", "")
@@ -318,6 +319,7 @@ def get_tracking_info(BEARER_TOKEN, PLAYBACK_JSON):
         response.raise_for_status()
 
         smil_xml = response.text
+        time.sleep(0.2)
         results = parse_smil_for_tracking_and_video(smil_xml)
         return results
     

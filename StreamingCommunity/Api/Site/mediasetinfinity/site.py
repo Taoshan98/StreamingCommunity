@@ -123,7 +123,8 @@ def title_search(query: str) -> int:
             'name': item.get('title', ''),
             'type': media_type,
             'url': page_url,
-            'image': None,
+            'image': item.get('thumbnails', {}).get('image_header_poster-768x384', '').get('url', ''),
+            'date': item.get('year', ''),
         })
 
     return media_search_manager.get_length()
