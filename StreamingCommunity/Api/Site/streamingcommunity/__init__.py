@@ -78,6 +78,8 @@ def process_search_result(select_title, selections=None):
         select_title (MediaItem): The selected media item. Can be None if selection fails.
         selections (dict, optional): Dictionary containing selection inputs that bypass manual input
                                     e.g., {'season': season_selection, 'episode': episode_selection}
+    Returns:
+        bool: True if processing was successful, False otherwise
     """
     if not select_title:
         if site_constant.TELEGRAM_BOT:
@@ -85,7 +87,7 @@ def process_search_result(select_title, selections=None):
             bot.send_message("No title selected or selection cancelled.", None)
         else:
             console.print("[yellow]No title selected or selection cancelled.")
-        return
+        return False
 
     if select_title.type == 'tv':
         season_selection = None
@@ -96,9 +98,11 @@ def process_search_result(select_title, selections=None):
             episode_selection = selections.get('episode')
 
         download_series(select_title, season_selection, episode_selection)
+        return True
         
     else:
         download_film(select_title)
+        return True
 
 def search(string_to_search: str = None, get_onlyDatabase: bool = False, direct_item: dict = None, selections: dict = None):
     """
@@ -119,7 +123,7 @@ def search(string_to_search: str = None, get_onlyDatabase: bool = False, direct_
     if direct_item:
         select_title_obj = MediaItem(**direct_item)
         process_search_result(select_title_obj, selections)
-        return
+        return True
     
     actual_search_query = get_user_input(string_to_search)
 
@@ -140,6 +144,7 @@ def search(string_to_search: str = None, get_onlyDatabase: bool = False, direct_
     if len_database > 0:
         select_title = get_select_title(table_show_manager, media_search_manager, len_database)
         process_search_result(select_title, selections)
+        return True
     
     else:
         if bot:

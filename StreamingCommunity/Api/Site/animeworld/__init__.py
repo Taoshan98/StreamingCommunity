@@ -1,5 +1,9 @@
 # 21.03.25
 
+import sys
+import subprocess
+
+
 # External library
 from rich.console import Console
 from rich.prompt import Prompt
@@ -29,7 +33,44 @@ msg = Prompt()
 console = Console()
 
 
+def get_user_input(string_to_search: str = None):
+    """
+    Asks the user to input a search term.
+    Handles both Telegram bot input and direct input.
+    If string_to_search is provided, it's returned directly (after stripping).
+    """
+    if string_to_search is not None:
+        return string_to_search.strip()
 
+    if site_constant.TELEGRAM_BOT:
+        bot = get_bot_instance()
+        user_response = bot.ask(
+            "key_search", # Request type
+            "Enter the search term\nor type 'back' to return to the menu: ",
+            None
+        )
+
+        if user_response is None:
+            bot.send_message("Timeout: No search term entered.", None)
+            return None
+
+        if user_response.lower() == 'back':
+            bot.send_message("Returning to the main menu...", None)
+            
+            try:
+                # Restart the script
+                subprocess.Popen([sys.executable] + sys.argv)
+                sys.exit()
+                
+            except Exception as e:
+                bot.send_message(f"Error during restart attempt: {e}", None)
+                return None # Return None if restart fails
+        
+        return user_response.strip()
+        
+    else:
+        return msg.ask(f"\n[purple]Insert a word to search in [green]{site_constant.SITE_NAME}").strip()
+    
 def process_search_result(select_title, selections=None):
     """
     Handles the search result and initiates the download for either a film or series.
@@ -38,6 +79,9 @@ def process_search_result(select_title, selections=None):
         select_title (MediaItem): The selected media item
         selections (dict, optional): Dictionary containing selection inputs that bypass manual input
                                     {'season': season_selection, 'episode': episode_selection}
+
+    Returns:
+        bool: True if processing was successful, False otherwise
     """
     if not select_title:
         if site_constant.TELEGRAM_BOT:
@@ -45,16 +89,18 @@ def process_search_result(select_title, selections=None):
             bot.send_message("No title selected or selection cancelled.", None)
         else:
             console.print("[yellow]No title selected or selection cancelled.")
-        return
+        return False
     
     if select_title.type == "TV":
         episode_selection = None
         if selections:
             episode_selection = selections.get('episode')
         download_series(select_title, episode_selection)
+        return True
 
     else:
         download_film(select_title)
+        return True
 
 def search(string_to_search: str = None, get_onlyDatabase: bool = False, direct_item: dict = None, selections: dict = None):
     """
@@ -74,13 +120,10 @@ def search(string_to_search: str = None, get_onlyDatabase: bool = False, direct_
     if direct_item:
         select_title = MediaItem(**direct_item)
         process_search_result(select_title, selections)
-        return
+        return True
 
     # Get the user input for the search term
-    if string_to_search is None:
-        actual_search_query = msg.ask(f"\n[purple]Insert a word to search in [green]{site_constant.SITE_NAME}").strip()
-    else:
-        actual_search_query = string_to_search
+    actual_search_query = get_user_input(string_to_search)
 
     # Perform the database search
     if not actual_search_query:
@@ -98,6 +141,7 @@ def search(string_to_search: str = None, get_onlyDatabase: bool = False, direct_
     if len_database > 0:
         select_title = get_select_title(table_show_manager, media_search_manager, len_database)
         process_search_result(select_title, selections)
+        return True
 
     else:
         if bot:

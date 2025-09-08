@@ -583,7 +583,8 @@ To enable qBittorrent integration, follow the setup guide [here](https://github.
             "ita",    // Specify language codes or use ["*"] to download all available subtitles
             "eng"
         ],
-        "cleanup_tmp_folder": true
+        "cleanup_tmp_folder": true,
+        "get_only_link": false
     }
 }
 ```
@@ -698,6 +699,9 @@ Note: Requires updated drivers and FFmpeg with hardware acceleration support.
     - 240p (426x240)
     - 240p (320x240)
     - 144p (256x144)
+
+#### Link options
+- `get_only_link`: Return M3U8 playlist/index URL instead of downloading
 
 </details>
 
@@ -869,10 +873,6 @@ python3 telegram_bot.py
 ```
 </details>
 
-# SITE_LOGIN key  
-To use some site, you may need a SITE_LOGIN key.  
-See [guide.md](.github/.site/guide.md) for instructions on how to obtain it.
-
 # Tutorials
 
 - [Windows](https://www.youtube.com/watch?v=mZGqK4wdN-k)
@@ -880,16 +880,10 @@ See [guide.md](.github/.site/guide.md) for instructions on how to obtain it.
 - [Pypy](https://www.youtube.com/watch?v=C6m9ZKOK0p4)
 - [Compiled](https://www.youtube.com/watch?v=pm4lqsxkTVo)
 
-# To Do
-
-- To Finish [website API](https://github.com/Arrowar/StreamingCommunity/tree/test_gui_1)
-- To finish [website API 2](https://github.com/hydrosh/StreamingCommunity/tree/test_gui_1)
-
 ## Useful Project
 
 ### 🎯 [Unit3Dup](https://github.com/31December99/Unit3Dup)
 Bot in Python per la generazione e l'upload automatico di torrent su tracker basati su Unit3D.
-
 
 ### 🇮🇹 [MammaMia](https://github.com/UrloMythus/MammaMia)
 Addon per Stremio che consente lo streaming HTTPS di film, serie, anime e TV in diretta in lingua italiana.

@@ -1,6 +1,5 @@
 # 16.03.25
 
-
 import logging
 from urllib.parse import urlparse
 
@@ -14,10 +13,6 @@ from bs4 import BeautifulSoup
 from StreamingCommunity.Util.headers import get_headers, get_userAgent
 from StreamingCommunity.Util.config_json import config_manager
 from StreamingCommunity.Api.Player.Helper.Vixcloud.util import SeasonManager
-
-
-# Logic class
-from .get_license import get_bearer_token
 
 
 # Variable
@@ -47,7 +42,10 @@ class GetSerieInfo:
         return self.serie_id
 
     def _get_public_id(self):
-        """Ottiene il public ID tramite l'API watchlist"""
+        self.public_id = "PR1GhC"
+        return self.public_id
+        
+        """
         bearer_token = get_bearer_token()
         headers = {
             'authorization': f'Bearer {bearer_token}',
@@ -73,6 +71,7 @@ class GetSerieInfo:
         else:
             logging.error(f"Failed to get public ID: {response.status_code}")
             return None
+        """
 
     def _get_series_data(self):
         """Ottiene i dati della serie tramite l'API"""

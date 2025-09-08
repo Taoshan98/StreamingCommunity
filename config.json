@@ -35,7 +35,8 @@
             "ita",
             "eng"
         ],
-        "cleanup_tmp_folder": true
+        "cleanup_tmp_folder": true,
+        "get_only_link": false
     },
     "M3U8_CONVERSION": {
         "use_codec": false,
@@ -61,7 +62,9 @@
             "x_cr_tab_id": ""
         },
         "mediasetinfinity": {
-            "beToken": ""
+            "beToken": "",
+            "username": "",
+            "password": ""
         }
     }
 }

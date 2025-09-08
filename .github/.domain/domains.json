@@ -1,0 +1,50 @@
+{
+  "cb01new": {
+    "domain": "sbs",
+    "full_url": "https://cb01net.sbs/",
+    "old_domain": "quest",
+    "time_change": "2025-09-08 18:29:32"
+  },
+  "animeunity": {
+    "domain": "so",
+    "full_url": "https://www.animeunity.so/",
+    "old_domain": "so",
+    "time_change": "2025-07-08 13:59:31"
+  },
+  "animeworld": {
+    "domain": "ac",
+    "full_url": "https://www.animeworld.ac/",
+    "old_domain": "ac",
+    "time_change": "2025-03-21 12:20:27"
+  },
+  "guardaserie": {
+    "domain": "sale",
+    "full_url": "https://guardaserietv.sale/",
+    "old_domain": "app",
+    "time_change": "2025-08-20 07:20:06"
+  },
+  "streamingwatch": {
+    "domain": "org",
+    "full_url": "https://www.streamingwatch.org/",
+    "old_domain": "org",
+    "time_change": "2025-04-29 12:30:30"
+  },
+  "altadefinizione": {
+    "domain": "ist",
+    "full_url": "https://altadefinizione.ist/",
+    "old_domain": "center",
+    "time_change": "2025-09-06 18:24:29"
+  },
+  "streamingcommunity": {
+    "domain": "online",
+    "full_url": "https://streamingcommunityz.online/",
+    "old_domain": "bid",
+    "time_change": "2025-09-08 15:20:32"
+  },
+  "altadefinizionegratis": {
+    "domain": "ist",
+    "full_url": "https://altadefinizione.ist/",
+    "old_domain": "center",
+    "time_change": "2025-09-06 18:24:32"
+  }
+}
