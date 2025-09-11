@@ -12,7 +12,7 @@ from rich.panel import Panel
 # Internal utilities
 from StreamingCommunity.Util.config_json import config_manager
 from StreamingCommunity.Util.os import internet_manager
-from ...FFmpeg import print_duration_table
+from ...FFmpeg import print_duration_table, join_audios, join_video
 
 
 # Logic class
@@ -174,25 +174,26 @@ class DASH_Downloader:
 
     def finalize_output(self):
 
-        # Use the original output path for the final file
+        # Definenition of decrypted files
+        video_file = os.path.join(self.decrypted_dir, "video.mp4")
+        audio_file = os.path.join(self.decrypted_dir, "audio.mp4")
         output_file = self.original_output_path
         
         # Set the output file path for status tracking
         self.output_file = output_file
         use_shortest = False
 
-        """if os.path.exists(video_file) and os.path.exists(audio_file):
+        if os.path.exists(video_file) and os.path.exists(audio_file):
             audio_tracks = [{"path": audio_file}]
-            out_audio_path, use_shortest = join_audios(video_file, audio_tracks, output_file)
+            _, use_shortest = join_audios(video_file, audio_tracks, output_file)
 
         elif os.path.exists(video_file):
-            out_video_path = join_video(video_file, output_file, codec=None)
-        
-        else:
-            print("Video file missing, cannot export")
-            return None
-        """
+            _ = join_video(video_file, output_file, codec=None)
 
+        else:
+            console.print("[red]Video file missing, cannot export[/red]")
+            return None
+        
         # Handle failed sync case
         if use_shortest:
             new_filename = output_file.replace(".mp4", "_failed_sync.mp4")
@@ -204,17 +205,21 @@ class DASH_Downloader:
         if os.path.exists(output_file):
             file_size = internet_manager.format_file_size(os.path.getsize(output_file))
             duration = print_duration_table(output_file, description=False, return_string=True)
+
             panel_content = (
                 f"[cyan]File size: [bold red]{file_size}[/bold red]\n"
                 f"[cyan]Duration: [bold]{duration}[/bold]\n"
                 f"[cyan]Output: [bold]{os.path.abspath(output_file)}[/bold]"
             )
-            
+
             console.print(Panel(
                 panel_content,
                 title=f"{os.path.basename(output_file.replace('.mp4', ''))}",
                 border_style="green"
             ))
+
+        else:
+            console.print(f"[red]Output file not found: {output_file}")
 
         # Clean up: delete only the tmp directory, not the main directory
         if os.path.exists(self.tmp_dir):
@@ -226,13 +231,12 @@ class DASH_Downloader:
         
         # Check if out_path is different from the actual output directory
         # and if it's empty, then it's safe to remove
-        if (self.out_path != output_dir and 
-            os.path.exists(self.out_path) and 
-            not os.listdir(self.out_path)):
+        if (self.out_path != output_dir and os.path.exists(self.out_path) and not os.listdir(self.out_path)):
             try:
                 os.rmdir(self.out_path)
+
             except Exception as e:
-                print(f"[WARN] Cannot remove directory {self.out_path}: {e}")
+                console.print(f"[red]Cannot remove directory {self.out_path}: {e}")
 
         # Verify the final file exists before returning
         if os.path.exists(output_file):
