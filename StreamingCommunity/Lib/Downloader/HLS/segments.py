@@ -287,11 +287,7 @@ class M3U8_Segments:
                         progress_bar.update(1)
                         return
 
-            except Exception as e:
-                error_msg = str(e)
-                
-                if attempt == 0:
-                    logging.warning(f"Segment {index} failed on first attempt: {error_msg}")
+            except Exception:
                 
                 if attempt > self.info_maxRetry:
                     self.info_maxRetry = attempt + 1
