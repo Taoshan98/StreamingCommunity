@@ -155,9 +155,6 @@ class ConfigManager:
                 # Determine which file to save to
                 self._save_domains_to_appropriate_location()
                 
-                site_count = len(self.configSite) if isinstance(self.configSite, dict) else 0
-                console.print(f"[bold green]Domains loaded from GitHub:[/bold green] {site_count} streaming services found.")
-                
             else:
                 console.print(f"[bold red]GitHub request failed:[/bold red] HTTP {response.status_code}, {response.text[:100]}")
                 self._handle_site_data_fallback()

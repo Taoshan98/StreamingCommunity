@@ -105,10 +105,17 @@ def load_search_functions() -> Dict[str, LazySearchModule]:
     loaded_functions = {}
     
     # Determine base path (calculated once)
-    base_path = os.path.join(
-        sys._MEIPASS, "StreamingCommunity"
-    ) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.dirname(__file__))
-    api_dir = os.path.join(base_path, 'Site')
+    if getattr(sys, 'frozen', False):
+
+        # When frozen (exe), sys._MEIPASS points to temporary extraction directory
+        base_path = os.path.join(sys._MEIPASS, "StreamingCommunity")
+        api_dir = os.path.join(base_path, 'Api', 'Site')
+        
+    else:
+        # When not frozen, __file__ is in StreamingCommunity/Api/Template/loader.py
+        # Go up two levels to get to StreamingCommunity/Api
+        base_path = os.path.dirname(os.path.dirname(__file__))
+        api_dir = os.path.join(base_path, 'Site')
     
     # Quick scan: just read directory structure and module metadata
     modules_metadata = []
@@ -138,6 +145,7 @@ def load_search_functions() -> Dict[str, LazySearchModule]:
             
             if indice is not None:
                 modules_metadata.append((module_name, indice))
+                logging.info(f"Found module: {module_name} (index: {indice})")
                 
         except Exception as e:
             console.print(f"[yellow]Warning: Could not read metadata from {module_name}: {str(e)}")
@@ -146,4 +154,5 @@ def load_search_functions() -> Dict[str, LazySearchModule]:
     for module_name, indice in sorted(modules_metadata, key=lambda x: x[1]):
         loaded_functions[f'{module_name}_search'] = LazySearchModule(module_name, indice)
     
+    logging.info(f"Loaded {len(loaded_functions)} search modules")
     return loaded_functions

@@ -84,7 +84,7 @@ def download_series(select_title: MediaItem, episode_selection: str = None):
     episodes = scrape_serie.get_episodes() 
 
     # Get episode count
-    console.print(f"[green]Episodes found:[/green] [red]{len(episodes)}[/red]")
+    console.print(f"\n[green]Episodes count:[/green] [red]{len(episodes)}[/red]")
 
     # Display episodes list and get user selection
     if episode_selection is None:

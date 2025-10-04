@@ -104,7 +104,7 @@ def download_series(select_title: MediaItem, season_selection: str = None, episo
 
     # Get episode information
     episoded_count = scrape_serie.get_count_episodes()
-    console.print(f"[green]Episodes count:[/green] [red]{episoded_count}[/red]")
+    console.print(f"\n[green]Episodes count:[/green] [red]{episoded_count}[/red]")
     
     # Telegram bot integration
     if episode_selection is None:
