@@ -4,7 +4,6 @@
         "show_message": true,
         "show_trending": true,
         "fetch_domain_online": true,
-        "validate_github_config": true,
         "telegram_bot": false,
         "bypass_dns": false
     },
@@ -60,11 +59,6 @@
         "crunchyroll": {
             "etp_rt": "",
             "x_cr_tab_id": ""
-        },
-        "mediasetinfinity": {
-            "beToken": "",
-            "username": "",
-            "password": ""
         }
     }
 }
