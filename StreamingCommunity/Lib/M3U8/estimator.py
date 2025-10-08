@@ -42,7 +42,7 @@ class M3U8_Ts_Estimator:
     def add_ts_file(self, size: int):
         """Add a file size to the list of file sizes."""
         if size <= 0:
-            logging.error(f"Invalid input values: size={size}")
+            logging.error(f"\nInvalid input values: size={size}")
             return
 
         with self.lock:

@@ -34,6 +34,7 @@
             "ita",
             "eng"
         ],
+        "limit_segment": 0,
         "cleanup_tmp_folder": true,
         "get_only_link": false
     },

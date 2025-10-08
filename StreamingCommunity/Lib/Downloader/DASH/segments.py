@@ -369,7 +369,7 @@ class MPD_Segments:
         Generate platform-appropriate progress bar format.
         """
         return (
-            f"{Colors.YELLOW}- DASH{Colors.CYAN} {description}{Colors.WHITE}: "
+            f"{Colors.YELLOW}DASH{Colors.CYAN} {description}{Colors.WHITE}: "
             f"{Colors.MAGENTA}{{bar:40}} "
             f"{Colors.LIGHT_GREEN}{{n_fmt}}{Colors.WHITE}/{Colors.CYAN}{{total_fmt}} {Colors.LIGHT_MAGENTA}TS {Colors.WHITE}"
             f"{Colors.DARK_GRAY}[{Colors.YELLOW}{{elapsed}}{Colors.WHITE} < {Colors.CYAN}{{remaining}}{Colors.DARK_GRAY}] "
