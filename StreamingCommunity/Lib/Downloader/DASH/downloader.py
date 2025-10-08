@@ -13,7 +13,7 @@ from rich.table import Table
 
 # Internal utilities
 from StreamingCommunity.Util.config_json import config_manager
-from StreamingCommunity.Util.os import internet_manager
+from StreamingCommunity.Util.os import os_manager, internet_manager
 from StreamingCommunity.Util.http_client import create_client
 from StreamingCommunity.Util.headers import get_userAgent
 
@@ -59,10 +59,17 @@ class DASH_Downloader:
         self.license_url = license_url
         self.mpd_url = mpd_url
         self.mpd_sub_list = mpd_sub_list or []
-        self.out_path = os.path.splitext(os.path.abspath(str(output_path)))[0]
+        self.out_path = os.path.splitext(os.path.abspath(os_manager.get_sanitize_path(output_path)))[0]
         self.original_output_path = output_path
         self.file_already_exists = os.path.exists(self.original_output_path)
         self.parser = None
+
+        # Added defaults to avoid AttributeError when no subtitles/audio/video are present
+        # Non la soluzione migliore ma evita crash in assenza di audio/video/subs
+        self.selected_subs = []
+        self.selected_video = None
+        self.selected_audio = None
+
         self._setup_temp_dirs()
 
         self.error = None

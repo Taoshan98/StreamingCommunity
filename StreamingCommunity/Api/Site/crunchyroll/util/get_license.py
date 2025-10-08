@@ -125,9 +125,16 @@ def get_playback_session(token: Token, device_id: str, url_id: str):
         
         subtitles = []
         if 'subtitles' in data:
-            subtitles = [
-                {'language': lang, 'url': info['url'], 'format': info.get('format')}
-                for lang, info in data['subtitles'].items()
-            ]
+            collected = []
+            for lang, info in data['subtitles'].items():
+                sub_url = info.get('url')
+
+                if not sub_url:
+                    continue
+                
+                collected.append({'language': lang, 'url': sub_url, 'format': info.get('format')})
+
+            if collected:
+                subtitles = collected
         
         return url, headers, subtitles

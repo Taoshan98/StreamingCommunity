@@ -137,7 +137,7 @@ def MP4_downloader(url: str, path: str, referer: str = None, headers_: dict = No
                 progress_bar = tqdm(
                     total=total,
                     ascii='░▒█',
-                    bar_format=f"{Colors.YELLOW}[MP4]{Colors.CYAN} Downloading{Colors.WHITE}: "
+                    bar_format=f"{Colors.YELLOW}MP4{Colors.CYAN} Downloading{Colors.WHITE}: "
                                f"{Colors.RED}{{percentage:.1f}}% {Colors.MAGENTA}{{bar:40}} {Colors.WHITE}"
                                f"{Colors.DARK_GRAY}[{Colors.YELLOW}{{elapsed}}{Colors.WHITE} < {Colors.CYAN}{{remaining}}{Colors.DARK_GRAY}] "
                                f"{Colors.LIGHT_CYAN}{{rate_fmt}}",

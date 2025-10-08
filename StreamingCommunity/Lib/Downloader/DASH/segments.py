@@ -22,6 +22,7 @@ REQUEST_MAX_RETRY = config_manager.get_int('REQUESTS', 'max_retry')
 DEFAULT_VIDEO_WORKERS = config_manager.get_int('M3U8_DOWNLOAD', 'default_video_workers')
 DEFAULT_AUDIO_WORKERS = config_manager.get_int('M3U8_DOWNLOAD', 'default_audio_workers')
 SEGMENT_MAX_TIMEOUT = config_manager.get_int("M3U8_DOWNLOAD", "segment_timeout")
+LIMIT_SEGMENT = config_manager.get_int('M3U8_DOWNLOAD', 'limit_segment')
 
 
 class MPD_Segments:
@@ -38,7 +39,13 @@ class MPD_Segments:
         self.tmp_folder = tmp_folder
         self.selected_representation = representation
         self.pssh = pssh
-        self.limit_segments = limit_segments
+        
+        # Use LIMIT_SEGMENT from config if limit_segments is not specified or is 0
+        if limit_segments is None or limit_segments == 0:
+            self.limit_segments = LIMIT_SEGMENT if LIMIT_SEGMENT > 0 else None
+        else:
+            self.limit_segments = limit_segments
+            
         self.download_interrupted = False
         self.info_nFailed = 0
         
@@ -50,6 +57,10 @@ class MPD_Segments:
         # Progress
         self._last_progress_update = 0
         self._progress_update_interval = 0.1
+        
+        # Segment tracking
+        self.segment_files = {}
+        self.segments_lock = asyncio.Lock()
 
     def get_concat_path(self, output_dir: str = None):
         """
@@ -78,7 +89,6 @@ class MPD_Segments:
         if self.limit_segments is not None:
             orig_count = len(self.selected_representation.get('segment_urls', []))
             if orig_count > self.limit_segments:
-                
                 # Limit segment URLs
                 self.selected_representation['segment_urls'] = self.selected_representation['segment_urls'][:self.limit_segments]
                 print(f"[yellow]Limiting segments from {orig_count} to {self.limit_segments}")
@@ -113,6 +123,9 @@ class MPD_Segments:
 
         os.makedirs(output_dir or self.tmp_folder, exist_ok=True)
         concat_path = os.path.join(output_dir or self.tmp_folder, f"{rep_id}_encrypted.m4s")
+        
+        temp_dir = os.path.join(output_dir or self.tmp_folder, f"{rep_id}_segments")
+        os.makedirs(temp_dir, exist_ok=True)
 
         # Determine stream type (video/audio) for progress bar
         stream_type = description
@@ -132,7 +145,7 @@ class MPD_Segments:
         # Initialize estimator
         estimator = M3U8_Ts_Estimator(total_segments=len(segment_urls) + 1)
 
-        results = [None] * len(segment_urls)
+        self.segment_files = {}
         self.downloaded_segments = set()
         self.info_nFailed = 0
         self.download_interrupted = False
@@ -148,25 +161,25 @@ class MPD_Segments:
                 # Download init segment
                 await self._download_init_segment(client, init_url, concat_path, estimator, progress_bar)
 
-                # Download all segments (first batch)
+                # Download all segments (first batch) - writes to temp files
                 await self._download_segments_batch(
-                    client, segment_urls, results, semaphore, REQUEST_MAX_RETRY, estimator, progress_bar
+                    client, segment_urls, temp_dir, semaphore, REQUEST_MAX_RETRY, estimator, progress_bar
                 )
 
                 # Retry failed segments 
                 await self._retry_failed_segments(
-                    client, segment_urls, results, semaphore, REQUEST_MAX_RETRY, estimator, progress_bar
+                    client, segment_urls, temp_dir, semaphore, REQUEST_MAX_RETRY, estimator, progress_bar
                 )
 
-                # Write all results to file
-                self._write_results_to_file(concat_path, results)
+                # Concatenate all segment files in order
+                await self._concatenate_segments(concat_path, len(segment_urls))
 
         except KeyboardInterrupt:
             self.download_interrupted = True
             print("\n[red]Download interrupted by user (Ctrl+C).")
 
         finally:
-            self._cleanup_resources(None, progress_bar)
+            self._cleanup_resources(temp_dir, progress_bar)
 
         self._verify_download_completion()
         return self._generate_results(stream_type)
@@ -187,12 +200,9 @@ class MPD_Segments:
             with open(concat_path, 'wb') as outfile:
                 if response.status_code == 200:
                     outfile.write(response.content)
-                    # Update estimator with init segment size
                     estimator.add_ts_file(len(response.content))
 
             progress_bar.update(1)
-
-            # Update progress bar with estimated info
             self._throttled_progress_update(len(response.content), estimator, progress_bar)
 
         except Exception as e:
@@ -208,9 +218,9 @@ class MPD_Segments:
             estimator.update_progress_bar(content_size, progress_bar)
             self._last_progress_update = current_time
 
-    async def _download_segments_batch(self, client, segment_urls, results, semaphore, max_retry, estimator, progress_bar):
+    async def _download_segments_batch(self, client, segment_urls, temp_dir, semaphore, max_retry, estimator, progress_bar):
         """
-        Download a batch of segments and update results.
+        Download a batch of segments and write them to temp files immediately.
         """
         async def download_single(url, idx):
             async with semaphore:
@@ -218,14 +228,21 @@ class MPD_Segments:
                 
                 for attempt in range(max_retry):
                     if self.download_interrupted:
-                        return idx, b'', attempt
+                        return idx, False, attempt
                         
                     try:
                         timeout = min(SEGMENT_MAX_TIMEOUT, 10 + attempt * 3)
                         resp = await client.get(url, headers=headers, follow_redirects=True, timeout=timeout)
 
+                        # Write to temp file immediately
                         if resp.status_code == 200:
-                            return idx, resp.content, attempt
+                            temp_file = os.path.join(temp_dir, f"seg_{idx:06d}.tmp")
+                            async with self.segments_lock:
+                                with open(temp_file, 'wb') as f:
+                                    f.write(resp.content)
+                                self.segment_files[idx] = temp_file
+                            
+                            return idx, True, attempt, len(resp.content)
                         else:
                             if attempt < 2:
                                 sleep_time = 0.5 + attempt * 0.5
@@ -237,17 +254,16 @@ class MPD_Segments:
                         sleep_time = min(2.0, 1.1 * (2 ** attempt))
                         await asyncio.sleep(sleep_time)
                         
-                return idx, b'', max_retry
+                return idx, False, max_retry, 0
 
         # Initial download attempt
         tasks = [download_single(url, i) for i, url in enumerate(segment_urls)]
 
         for coro in asyncio.as_completed(tasks):
             try:
-                idx, data, nretry = await coro
-                results[idx] = data
+                idx, success, nretry, size = await coro
                 
-                if data and len(data) > 0:
+                if success:
                     self.downloaded_segments.add(idx)
                 else:
                     self.info_nFailed += 1
@@ -257,19 +273,15 @@ class MPD_Segments:
                 self.info_nRetry += nretry
                     
                 progress_bar.update(1)
-
-                # Update estimator with segment size
-                estimator.add_ts_file(len(data))
-
-                # Update progress bar with estimated info and segment count
-                self._throttled_progress_update(len(data), estimator, progress_bar)
+                estimator.add_ts_file(size)
+                self._throttled_progress_update(size, estimator, progress_bar)
 
             except KeyboardInterrupt:
                 self.download_interrupted = True
                 print("\n[red]Download interrupted by user (Ctrl+C).")
                 break
 
-    async def _retry_failed_segments(self, client, segment_urls, results, semaphore, max_retry, estimator, progress_bar):
+    async def _retry_failed_segments(self, client, segment_urls, temp_dir, semaphore, max_retry, estimator, progress_bar):
         """
         Retry failed segments up to 3 times.
         """
@@ -277,7 +289,7 @@ class MPD_Segments:
         global_retry_count = 0
 
         while self.info_nFailed > 0 and global_retry_count < max_global_retries and not self.download_interrupted:
-            failed_indices = [i for i, data in enumerate(results) if not data or len(data) == 0]
+            failed_indices = [i for i in range(len(segment_urls)) if i not in self.downloaded_segments]
             if not failed_indices:
                 break
 
@@ -289,32 +301,37 @@ class MPD_Segments:
 
                     for attempt in range(max_retry):
                         if self.download_interrupted:
-                            return idx, b'', attempt
+                            return idx, False, attempt, 0
                             
                         try:
                             timeout = min(SEGMENT_MAX_TIMEOUT, 15 + attempt * 5)
                             resp = await client.get(url, headers=headers, timeout=timeout)
                             
+                            # Write to temp file immediately
                             if resp.status_code == 200:
-                                return idx, resp.content, attempt
+                                temp_file = os.path.join(temp_dir, f"seg_{idx:06d}.tmp")
+                                async with self.segments_lock:
+                                    with open(temp_file, 'wb') as f:
+                                        f.write(resp.content)
+                                    self.segment_files[idx] = temp_file
+                                
+                                return idx, True, attempt, len(resp.content)
                             else:
                                 await asyncio.sleep(1.5 * (2 ** attempt))
 
                         except Exception:
                             await asyncio.sleep(1.5 * (2 ** attempt))
                             
-                return idx, b'', max_retry
+                return idx, False, max_retry, 0
 
             retry_tasks = [download_single(segment_urls[i], i) for i in failed_indices]
 
-            # Reset nFailed for this round
             nFailed_this_round = 0
             for coro in asyncio.as_completed(retry_tasks):
                 try:
-                    idx, data, nretry = await coro
+                    idx, success, nretry, size = await coro
 
-                    if data and len(data) > 0:
-                        results[idx] = data
+                    if success:
                         self.downloaded_segments.add(idx)
                     else:
                         nFailed_this_round += 1
@@ -323,9 +340,9 @@ class MPD_Segments:
                         self.info_maxRetry = nretry
                     self.info_nRetry += nretry
                     
-                    progress_bar.update(0)  # No progress bar increment, already counted
-                    estimator.add_ts_file(len(data))
-                    self._throttled_progress_update(len(data), estimator, progress_bar)
+                    progress_bar.update(0)
+                    estimator.add_ts_file(size)
+                    self._throttled_progress_update(size, estimator, progress_bar)
 
                 except KeyboardInterrupt:
                     self.download_interrupted = True
@@ -335,21 +352,24 @@ class MPD_Segments:
             self.info_nFailed = nFailed_this_round
             global_retry_count += 1
 
-    def _write_results_to_file(self, concat_path, results):
+    async def _concatenate_segments(self, concat_path, total_segments):
         """
-        Write all downloaded segments to the output file.
+        Concatenate all segment files in order to the final output file.
         """
         with open(concat_path, 'ab') as outfile:
-            for data in results:
-                if data:
-                    outfile.write(data)
+            for idx in range(total_segments):
+                if idx in self.segment_files:
+                    temp_file = self.segment_files[idx]
+                    if os.path.exists(temp_file):
+                        with open(temp_file, 'rb') as infile:
+                            outfile.write(infile.read())
 
     def _get_bar_format(self, description: str) -> str:
         """
         Generate platform-appropriate progress bar format.
         """
         return (
-            f"{Colors.YELLOW}[DASH]{Colors.CYAN} {description}{Colors.WHITE}: "
+            f"{Colors.YELLOW}- DASH{Colors.CYAN} {description}{Colors.WHITE}: "
             f"{Colors.MAGENTA}{{bar:40}} "
             f"{Colors.LIGHT_GREEN}{{n_fmt}}{Colors.WHITE}/{Colors.CYAN}{{total_fmt}} {Colors.LIGHT_MAGENTA}TS {Colors.WHITE}"
             f"{Colors.DARK_GRAY}[{Colors.YELLOW}{{elapsed}}{Colors.WHITE} < {Colors.CYAN}{{remaining}}{Colors.DARK_GRAY}] "
@@ -383,7 +403,6 @@ class MPD_Segments:
         total = len(self.selected_representation['segment_urls'])
         completed = getattr(self, 'downloaded_segments', set())
 
-        # If interrupted, skip raising error
         if self.download_interrupted:
             return
         
@@ -394,17 +413,28 @@ class MPD_Segments:
             missing = sorted(set(range(total)) - completed)
             raise RuntimeError(f"Download incomplete ({len(completed)/total:.1%}). Missing segments: {missing}")
 
-    def _cleanup_resources(self, writer_thread, progress_bar: tqdm) -> None:
+    def _cleanup_resources(self, temp_dir, progress_bar: tqdm) -> None:
         """
         Ensure resource cleanup and final reporting.
         """
         progress_bar.close()
+        
+        # Delete temp segment files
+        if temp_dir and os.path.exists(temp_dir):
+            try:
+                for temp_file in self.segment_files.values():
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                os.rmdir(temp_dir)
+
+            except Exception as e:
+                print(f"[yellow]Warning: Could not clean temp directory: {e}")
+        
         if getattr(self, 'info_nFailed', 0) > 0:
             self._display_error_summary()
             
         # Clear memory
-        self.buffer = {}
-        self.expected_index = 0
+        self.segment_files = {}
 
     def _display_error_summary(self) -> None:
         """
