@@ -30,24 +30,13 @@ def determine_media_type(item):
     using GetSerieInfo.
     """
     try:
-        # Extract program name from path_id
-        program_name = None
-        if item.get('path_id'):
-            parts = item['path_id'].strip('/').split('/')
-            if len(parts) >= 2:
-                program_name = parts[-1].split('.')[0]
-
-        if not program_name:
-            return "film"
-
-        # Dio stranamente guarda che giro bisogna fare per avere il tipo di media.
-        scraper = GetSerieInfo(program_name)
+        scraper = GetSerieInfo(item.get('path_id'))
         scraper.collect_info_title()
         return scraper.prog_tipology, scraper.prog_description, scraper.prog_year
     
     except Exception as e:
         console.print(f"[red]Error determining media type: {e}[/red]")
-        return "film"
+        return None, None, None
 
 
 def title_search(query: str) -> int:
@@ -97,6 +86,9 @@ def title_search(query: str) -> int:
     # Process each item and add to media manager
     for item in data:
         media_type, prog_description, prog_year = determine_media_type(item)
+        if media_type is None:
+            continue
+
         media_search_manager.add_media({
             'id': item.get('id', ''),
             'name': item.get('titolo', ''),

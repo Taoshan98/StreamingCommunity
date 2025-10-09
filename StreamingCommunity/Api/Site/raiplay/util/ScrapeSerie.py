@@ -18,12 +18,12 @@ max_timeout = config_manager.get_int("REQUESTS", "timeout")
 
 
 class GetSerieInfo:
-    def __init__(self, program_name: str):
+    def __init__(self, path_id: str):
         """Initialize the GetSerieInfo class."""
         self.base_url = "https://www.raiplay.it"
-        self.program_name = program_name
-        self.series_name = program_name
-        self.prog_tipology = None
+        self.path_id = path_id
+        self.series_name = None
+        self.prog_tipology = "film"
         self.prog_description = None
         self.prog_year = None
         self.seasons_manager = SeasonManager()
@@ -31,24 +31,21 @@ class GetSerieInfo:
     def collect_info_title(self) -> None:
         """Get series info including seasons."""
         try:
-            program_url = f"{self.base_url}/programmi/{self.program_name}.json"
+            program_url = f"{self.base_url}/{self.path_id}"
             response = httpx.get(url=program_url, headers=get_headers(), timeout=max_timeout)
             
             # If 404, content is not yet available
             if response.status_code == 404:
-                logging.info(f"Content not yet available: {self.program_name}")
+                logging.info(f"Content not yet available: {program_url}")
                 return
                 
             response.raise_for_status()
             json_data = response.json()
 
-            # Dio santissimo ma chi ha fatto le cose cosi di merda.
-            type_check_1 = "tv" if json_data.get('program_info', {}).get('layout', 'single') == 'multi' else "film"
-            #type_check_2 = "tv" if "tv" in json_data.get('track_info', {}).get('typology', '') else "film"
-
-            self.prog_tipology = type_check_1
+            # Get basic program info
             self.prog_description = json_data.get('program_info', '').get('vanity', '')
             self.prog_year = json_data.get('program_info', '').get('year', '')
+            self.series_name = json_data.get('program_info', '').get('title', '')
             
             # Look for seasons in the 'blocks' property
             for block in json_data.get('blocks', []):
@@ -60,11 +57,14 @@ class GetSerieInfo:
 
                         # Extract seasons from sets array
                         for season_set in block.get('sets', []):
+                            self.prog_tipology = "tv"
+
                             if 'stagione' in season_set.get('name', '').lower():
                                 self._add_season(season_set, block.get('id'))
                                 
                     elif 'stagione' in block.get('name', '').lower():
                         self.publishing_block_id = block.get('id')
+                        self.prog_tipology = "tv"
 
                         # Extract season directly from block's sets
                         for season_set in block.get('sets', []):
@@ -88,7 +88,7 @@ class GetSerieInfo:
             season = self.seasons_manager.get_season_by_number(number_season)
 
             # Se stai leggendo questo codice spieami perche hai fatto cosi.
-            url = f"{self.base_url}/programmi/{self.program_name}/{self.publishing_block_id}/{season.id}/episodes.json"
+            url = f"{self.base_url}/{self.path_id.replace(".json", "")}/{self.publishing_block_id}/{season.id}/episodes.json"
             response = httpx.get(url=url, headers=get_headers(), timeout=max_timeout)
             response.raise_for_status()
             

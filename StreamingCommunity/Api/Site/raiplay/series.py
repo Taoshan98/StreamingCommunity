@@ -166,16 +166,7 @@ def download_series(select_season: MediaItem, season_selection: str = None, epis
         - episode_selection (str, optional): Pre-defined episode selection that bypasses manual input
     """
     start_message()
-
-    # Extract program name from path_id
-    program_name = None
-    if select_season.path_id:
-        parts = select_season.path_id.strip('/').split('/')
-        if len(parts) >= 2:
-            program_name = parts[-1].split('.')[0]
-
-    # Init scraper
-    scrape_serie = GetSerieInfo(program_name)
+    scrape_serie = GetSerieInfo(select_season.path_id)
 
     # Get seasons info
     scrape_serie.collect_info_title()
