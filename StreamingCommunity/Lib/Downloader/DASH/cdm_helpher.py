@@ -5,7 +5,7 @@ import logging
 
 
 # External libraries
-import httpx
+from curl_cffi import requests
 from rich.console import Console
 from pywidevine.cdm import Cdm
 from pywidevine.device import Device
@@ -39,8 +39,13 @@ def get_widevine_keys(pssh, license_url, cdm_device_path, headers=None, payload=
             req_headers = headers or {}
             req_headers['Content-Type'] = 'application/octet-stream'
 
-            # Send license request
-            response = httpx.post(license_url, data=challenge, headers=req_headers, content=payload)
+            # Send license request using curl_cffi
+            try:
+                # response = httpx.post(license_url, data=challenge, headers=req_headers, content=payload)
+                response = requests.post(license_url, data=challenge, headers=req_headers, json=payload, impersonate="chrome124")
+            except Exception as e:
+                console.print(f"[bold red]Request error:[/bold red] {e}")
+                return None
 
             if response.status_code != 200:
                 console.print(f"[bold red]License error:[/bold red] {response.status_code}, {response.text}")

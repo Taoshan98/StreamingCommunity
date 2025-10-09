@@ -21,7 +21,7 @@ from StreamingCommunity.Api.Template.Class.SearchType import MediaItem
 
 # Player
 from StreamingCommunity import DASH_Downloader
-from .util.get_license import get_playback_session, get_auth_token, generate_device_id
+from .util.get_license import get_playback_session, CrunchyrollClient
 
 
 # Variable
@@ -42,14 +42,19 @@ def download_film(select_title: MediaItem) -> str:
     start_message()
     console.print(f"\n[bold yellow]Download:[/bold yellow] [red]{site_constant.SITE_NAME}[/red] → [cyan]{select_title.name}[/cyan] \n")
 
+    # Initialize Crunchyroll client
+    client = CrunchyrollClient()
+    if not client.start():
+        console.print("[bold red]Failed to authenticate with Crunchyroll.[/bold red]")
+        return None, True
+
     # Define filename and path for the downloaded video
     mp4_name = os_manager.get_sanitize_file(select_title.name) + ".mp4"
     mp4_path = os.path.join(site_constant.MOVIE_FOLDER, mp4_name.replace(".mp4", ""))
 
     # Generate mpd and license URLs
     url_id = select_title.get('url').split('/')[-1]
-    device_id = generate_device_id()
-    mpd_url, mpd_headers, mpd_list_sub = get_playback_session(get_auth_token(device_id), device_id, url_id)
+    mpd_url, mpd_headers, mpd_list_sub = get_playback_session(client, url_id)
     parsed_url = urlparse(mpd_url)
     query_params = parse_qs(parsed_url.query)
 
@@ -81,5 +86,10 @@ def download_film(select_title: MediaItem) -> str:
             os.remove(status['path'])
         except Exception: 
             pass
+
+    # Delete stream after download
+    token = query_params['playbackGuid'][0]
+    if token:
+        client.delete_active_stream(url_id, token)
 
     return status['path'], status['stopped']

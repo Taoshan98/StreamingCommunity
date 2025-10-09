@@ -8,6 +8,7 @@ import time
 # External libraries
 import httpx
 from tqdm import tqdm
+from rich.console import Console
 
 
 # Internal utilities
@@ -23,6 +24,10 @@ DEFAULT_VIDEO_WORKERS = config_manager.get_int('M3U8_DOWNLOAD', 'default_video_w
 DEFAULT_AUDIO_WORKERS = config_manager.get_int('M3U8_DOWNLOAD', 'default_audio_workers')
 SEGMENT_MAX_TIMEOUT = config_manager.get_int("M3U8_DOWNLOAD", "segment_timeout")
 LIMIT_SEGMENT = config_manager.get_int('M3U8_DOWNLOAD', 'limit_segment')
+
+
+# Variable
+console = Console()
 
 
 class MPD_Segments:
@@ -89,9 +94,9 @@ class MPD_Segments:
         if self.limit_segments is not None:
             orig_count = len(self.selected_representation.get('segment_urls', []))
             if orig_count > self.limit_segments:
+
                 # Limit segment URLs
                 self.selected_representation['segment_urls'] = self.selected_representation['segment_urls'][:self.limit_segments]
-                print(f"[yellow]Limiting segments from {orig_count} to {self.limit_segments}")
 
         # Run async download in sync mode
         try:
@@ -99,7 +104,7 @@ class MPD_Segments:
 
         except KeyboardInterrupt:
             self.download_interrupted = True
-            print("\n[red]Download interrupted by user (Ctrl+C).")
+            console.print("\n[red]Download interrupted by user (Ctrl+C).")
 
         return {
             "concat_path": concat_path,
@@ -176,7 +181,7 @@ class MPD_Segments:
 
         except KeyboardInterrupt:
             self.download_interrupted = True
-            print("\n[red]Download interrupted by user (Ctrl+C).")
+            console.print("\n[red]Download interrupted by user (Ctrl+C).")
 
         finally:
             self._cleanup_resources(temp_dir, progress_bar)
@@ -292,8 +297,6 @@ class MPD_Segments:
             failed_indices = [i for i in range(len(segment_urls)) if i not in self.downloaded_segments]
             if not failed_indices:
                 break
-
-            print(f"[yellow]Retrying {len(failed_indices)} failed segments (attempt {global_retry_count+1}/{max_global_retries})...")
             
             async def download_single(url, idx):
                 async with semaphore:
@@ -346,7 +349,7 @@ class MPD_Segments:
 
                 except KeyboardInterrupt:
                     self.download_interrupted = True
-                    print("\n[red]Download interrupted by user (Ctrl+C).")
+                    console.print("\n[red]Download interrupted by user (Ctrl+C).")
                     break
                     
             self.info_nFailed = nFailed_this_round
@@ -355,7 +358,9 @@ class MPD_Segments:
     async def _concatenate_segments(self, concat_path, total_segments):
         """
         Concatenate all segment files in order to the final output file.
+        Skip missing segments and continue with available ones.
         """
+        successful_segments = 0
         with open(concat_path, 'ab') as outfile:
             for idx in range(total_segments):
                 if idx in self.segment_files:
@@ -363,6 +368,7 @@ class MPD_Segments:
                     if os.path.exists(temp_file):
                         with open(temp_file, 'rb') as infile:
                             outfile.write(infile.read())
+                        successful_segments += 1
 
     def _get_bar_format(self, description: str) -> str:
         """
@@ -398,7 +404,7 @@ class MPD_Segments:
 
     def _verify_download_completion(self) -> None:
         """
-        Validate final download integrity.
+        Validate final download integrity - allow partial downloads.
         """
         total = len(self.selected_representation['segment_urls'])
         completed = getattr(self, 'downloaded_segments', set())
@@ -409,9 +415,16 @@ class MPD_Segments:
         if total == 0:
             return
         
-        if len(completed) / total < 0.999:
+        completion_rate = len(completed) / total
+        missing_count = total - len(completed)
+        
+        # Allow downloads with up to 30 missing segments or 90% completion rate
+        if completion_rate >= 0.90 or missing_count <= 30:
+            return
+        
+        else:
             missing = sorted(set(range(total)) - completed)
-            raise RuntimeError(f"Download incomplete ({len(completed)/total:.1%}). Missing segments: {missing}")
+            console.print(f"[red]Missing segments: {missing[:10]}..." if len(missing) > 10 else f"[red]Missing segments: {missing}")
 
     def _cleanup_resources(self, temp_dir, progress_bar: tqdm) -> None:
         """
@@ -441,10 +454,12 @@ class MPD_Segments:
         Generate final error report.
         """
         total_segments = len(self.selected_representation.get('segment_urls', []))
-        print(f"\n[cyan]Retry Summary: "
-              f"[white]Max retries: [green]{getattr(self, 'info_maxRetry', 0)} "
-              f"[white]Total retries: [green]{getattr(self, 'info_nRetry', 0)} "
-              f"[white]Failed segments: [red]{getattr(self, 'info_nFailed', 0)}")
-        
-        if getattr(self, 'info_nRetry', 0) > total_segments * 0.3:
-            print("[yellow]Warning: High retry count detected. Consider reducing worker count in config.")
+        failed_indices = [i for i in range(total_segments) if i not in self.downloaded_segments]
+        successful_segments = len(self.downloaded_segments)
+
+        console.print(f"[green]Download Summary: "
+              f"[cyan]Successful: [red]{successful_segments}/{total_segments} "
+              f"[cyan]Max retries: [red]{getattr(self, 'info_maxRetry', 0)} "
+              f"[cyan]Total retries: [red]{getattr(self, 'info_nRetry', 0)} "
+              f"[cyan]Failed segments: [red]{getattr(self, 'info_nFailed', 0)} "
+              f"[cyan]Failed indices: [red]{failed_indices} \n")

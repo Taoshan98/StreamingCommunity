@@ -489,10 +489,7 @@ class M3U8_Segments:
 
     def _display_error_summary(self) -> None:
         """Generate final error report."""
-        console.print(f"\n[cyan]Retry Summary: "
-                     f"[white]Max retries: [green]{self.info_maxRetry} "
-                     f"[white]Total retries: [green]{self.info_nRetry} "
-                     f"[white]Failed segments: [red]{self.info_nFailed}")
-        
-        if self.info_nRetry > len(self.segments) * 0.3:
-            console.print("[yellow]Warning: High retry count detected. Consider reducing worker count in config.")
+        console.print(f"\n[green]Retry Summary: "
+                     f"[cyan]Max retries: [red]{self.info_maxRetry} "
+                     f"[cyan]Total retries: [red]{self.info_nRetry} "
+                     f"[cyan]Failed segments: [red]{self.info_nFailed}")

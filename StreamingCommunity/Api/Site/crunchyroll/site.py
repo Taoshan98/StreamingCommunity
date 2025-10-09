@@ -10,14 +10,13 @@ from rich.console import Console
 
 # Internal utilities
 from StreamingCommunity.Util.config_json import config_manager
-from StreamingCommunity.Util.headers import get_headers
 from StreamingCommunity.Util.table import TVShowManager
 
 
 # Logic class
 from StreamingCommunity.Api.Template.config_loader import site_constant
 from StreamingCommunity.Api.Template.Class.SearchType import MediaManager
-from .util.get_license import get_auth_token, generate_device_id
+from .util.get_license import CrunchyrollClient
 
 
 # Variable
@@ -40,9 +39,16 @@ def title_search(query: str) -> int:
     media_search_manager.clear()
     table_show_manager.clear()
 
-    # Check if x_cr_tab_id or etp_rt is present
-    if config_manager.get_dict("SITE_LOGIN", "crunchyroll")['x_cr_tab_id'] is None or config_manager.get_dict("SITE_LOGIN", "crunchyroll")['x_cr_tab_id'] == "" or config_manager.get_dict("SITE_LOGIN", "crunchyroll")['etp_rt'] is None or config_manager.get_dict("SITE_LOGIN", "crunchyroll")['etp_rt'] == "":
-        console.print("[bold red] x_cr_tab_id or etp_rt is missing or empty.[/bold red]")
+    # Check if device_id or etp_rt is present
+    config = config_manager.get_dict("SITE_LOGIN", "crunchyroll")
+    if not config.get('device_id') or not config.get('etp_rt'):
+        console.print("[bold red] device_id or etp_rt is missing or empty in config.json.[/bold red]")
+        sys.exit(0)
+
+    # Initialize Crunchyroll client
+    client = CrunchyrollClient()
+    if not client.start():
+        console.print("[bold red] Failed to authenticate with Crunchyroll.[/bold red]")
         sys.exit(0)
 
     # Build new Crunchyroll API search URL
@@ -57,8 +63,7 @@ def title_search(query: str) -> int:
         "locale": "it-IT"
     }
 
-    headers = get_headers()
-    headers['authorization'] = f"Bearer {get_auth_token(generate_device_id()).access_token}"
+    headers = client._get_headers()
 
     console.print(f"[cyan]Search url: [yellow]{api_url}")
 

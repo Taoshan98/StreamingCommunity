@@ -79,7 +79,7 @@ class MediasetAPI:
         html = self.fetch_html()
         scripts = self.find_relevant_script(html)[0:1]
         pairs = self.extract_pairs_from_scripts(scripts)
-        return next((h for h, k in pairs.items() if k == "$2a"), None)
+        return list(pairs.keys())[-5]
 
     def generate_request_headers(self):
         return {

@@ -8,10 +8,9 @@ from curl_cffi import requests
 
 
 # Internal utilities
-from StreamingCommunity.Util.headers import get_headers
 from StreamingCommunity.Util.config_json import config_manager
 from StreamingCommunity.Api.Player.Helper.Vixcloud.util import SeasonManager
-from .get_license import get_auth_token, generate_device_id
+from .get_license import CrunchyrollClient
 
 
 # Variable
@@ -45,26 +44,6 @@ def get_season_episodes(season_id, headers, params):
     )
     return response
 
-def delete_stream_episode(episode_id, stream_id, headers):
-    """
-    Deletes a specific stream episode by episode ID and stream ID.
-    """
-    url = f'https://www.crunchyroll.com/playback/v1/token/{episode_id}/{stream_id}'
-    headers = get_headers()
-    
-    response = requests.delete(
-        url,
-        headers=headers,
-        impersonate="chrome110"
-    )
-    
-    if response.status_code == 204:
-        return True
-    
-    else:
-        logging.error(f"Failed to delete stream episode: {response.status_code} - {response.text}")
-        return False
-
 
 class GetSerieInfo:
     def __init__(self, series_id):
@@ -76,8 +55,13 @@ class GetSerieInfo:
         """
         self.series_id = series_id
         self.seasons_manager = SeasonManager()
-        self.headers = get_headers()
-        self.headers['authorization'] = f"Bearer {get_auth_token(generate_device_id()).access_token}"
+        
+        # Initialize Crunchyroll client
+        self.client = CrunchyrollClient()
+        if not self.client.start():
+            raise Exception("Failed to authenticate with Crunchyroll")
+        
+        self.headers = self.client._get_headers()
         self.params = {
             'force_locale': '',
             'preferred_audio_language': 'it-IT',
@@ -186,7 +170,6 @@ class GetSerieInfo:
                 if locale and guid:
                     audio_locales.append(locale)
                     urls_by_locale[locale] = f"https://www.crunchyroll.com/it/watch/{guid}"
-                    #print(f"Locale: {locale}, URL: {urls_by_locale[locale]}")
 
             return audio_locales, urls_by_locale
         

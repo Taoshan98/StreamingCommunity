@@ -1,12 +1,7 @@
 # 28.07.25
 
-import uuid
-from dataclasses import dataclass, field
-from typing import Optional,  Dict, Any
-
-
-# External library
-from curl_cffi.requests import Session
+from typing import Tuple, List, Dict
+from curl_cffi import requests
 
 
 # Internal utilities
@@ -15,126 +10,131 @@ from StreamingCommunity.Util.headers import get_userAgent
 
 
 # Variable
-device_id = None
-auth_basic = 'bm9haWhkZXZtXzZpeWcwYThsMHE6'
-etp_rt = config_manager.get_dict("SITE_LOGIN", "crunchyroll")['etp_rt']
-x_cr_tab_id = config_manager.get_dict("SITE_LOGIN", "crunchyroll")['x_cr_tab_id']
+PUBLIC_TOKEN = "bm9haWhkZXZtXzZpeWcwYThsMHE6"
 
 
-@dataclass
-class Token:
-    access_token: Optional[str] = None
-    refresh_token: Optional[str] = None
-    expires_in: Optional[int] = None
-    token_type: Optional[str] = None
-    scope: Optional[str] = None
-    country: Optional[str] = None
-    account_id: Optional[str] = None
-    profile_id: Optional[str] = None
-    extra: Dict[str, Any] = field(default_factory=dict)
+class CrunchyrollClient:
+    def __init__(self) -> None:
+        config = config_manager.get_dict("SITE_LOGIN", "crunchyroll")
+        self.device_id = config.get('device_id')
+        self.etp_rt = config.get('etp_rt')
+        self.preferred_audio_language = "ja-JP"
+        self.locale = "it-IT"
+        
+        self.access_token = None
+        self.refresh_token = None
+        self.account_id = None
 
-
-
-def generate_device_id():
-    global device_id
-
-    if device_id is not None:
-        return device_id
-    
-    device_id = str(uuid.uuid4())
-    return device_id
-
-
-def get_auth_token(device_id):
-    with Session(impersonate="chrome110") as session:
-        cookies = {
-            'etp_rt': etp_rt,
+    def _get_headers(self) -> Dict:
+        headers = {
+            'user-agent': get_userAgent(),
         }
-        response = session.post(
+        if self.access_token:
+            headers['authorization'] = f'Bearer {self.access_token}'
+        return headers
+    
+    def _get_cookies(self) -> Dict:
+        cookies = {'device_id': self.device_id}
+        if self.etp_rt:
+            cookies['etp_rt'] = self.etp_rt
+        return cookies
+
+    def start(self) -> bool:
+        """Autorizza il client"""
+        headers = self._get_headers()
+        headers['authorization'] = f'Basic {PUBLIC_TOKEN}'
+        headers['content-type'] = 'application/x-www-form-urlencoded'
+        
+        response = requests.post(
             'https://www.crunchyroll.com/auth/v1/token',
-            headers={
-                'authorization': f'Basic {auth_basic}',
-                'user-agent': get_userAgent(),
-            },
+            cookies=self._get_cookies(),
+            headers=headers,
             data={
-                'device_id': device_id,
+                'device_id': self.device_id,
                 'device_type': 'Chrome on Windows',
                 'grant_type': 'etp_rt_cookie',
             },
-            cookies=cookies
+            impersonate="chrome110"
         )
+        
         if response.status_code == 400:
             print("Error 400: Please enter a correct 'etp_rt' value in config.json. You can find the value in the request headers.")
+            return False
+            
+        result = response.json()
+        self.access_token = result.get('access_token')
+        self.refresh_token = result.get('refresh_token')
+        self.account_id = result.get('account_id')
+        
+        return True
 
-        # Get the JSON response
-        data = response.json()
-        known = {
-            'access_token', 'refresh_token', 'expires_in', 'token_type', 'scope',
-            'country', 'account_id', 'profile_id'
-        }
-        extra = {k: v for k, v in data.items() if k not in known}
-        return Token(
-            access_token=data.get('access_token'),
-            refresh_token=data.get('refresh_token'),
-            expires_in=data.get('expires_in'),
-            token_type=data.get('token_type'),
-            scope=data.get('scope'),
-            country=data.get('country'),
-            account_id=data.get('account_id'),
-            profile_id=data.get('profile_id'),
-            extra=extra
+    def get_streams(self, media_id: str) -> Dict:
+        """Ottieni gli stream disponibili"""
+        response = requests.get(
+            f'https://www.crunchyroll.com/playback/v3/{media_id}/web/chrome/play',
+            cookies=self._get_cookies(),
+            headers=self._get_headers(),
+            params={'locale': self.locale},
+            impersonate="chrome110"
         )
-
-
-def get_playback_session(token: Token, device_id: str, url_id: str):
-    """
-    Crea una sessione per ottenere i dati di playback e sottotitoli da Crunchyroll.
-    """
-    cookies = {
-        'device_id': device_id,
-        'etp_rt': etp_rt
-    }
-    headers = {
-        'authorization': f'Bearer {token.access_token}',
-        'user-agent': get_userAgent(),
-        'x-cr-tab-id': x_cr_tab_id
-    }
-
-    with Session(impersonate="chrome110") as session:
-        response = session.get(
-            f'https://www.crunchyroll.com/playback/v3/{url_id}/web/chrome/play',
-            cookies=cookies,
-            headers=headers
-        )
-
-        if (response.status_code == 403):
+        
+        if response.status_code == 403:
             raise Exception("Playback is Rejected: The current subscription does not have access to this content")
         
-        if (response.status_code == 420):
+        if response.status_code == 420:
             raise Exception("TOO_MANY_ACTIVE_STREAMS. Wait a few minutes and try again.")
-
+        
         response.raise_for_status()
-
-        # Get the JSON response
+        
         data = response.json()
         
         if data.get('error') == 'Playback is Rejected':
             raise Exception("Playback is Rejected: Premium required")
         
-        url = data.get('url')
-        
-        subtitles = []
-        if 'subtitles' in data:
-            collected = []
-            for lang, info in data['subtitles'].items():
-                sub_url = info.get('url')
+        return data
 
-                if not sub_url:
-                    continue
-                
-                collected.append({'language': lang, 'url': sub_url, 'format': info.get('format')})
-
-            if collected:
-                subtitles = collected
+    def delete_active_stream(self, media_id: str, token: str) -> bool:
+        """Elimina uno stream attivo"""
+        response = requests.delete(
+            f'https://www.crunchyroll.com/playback/v1/token/{media_id}/{token}',
+            cookies=self._get_cookies(),
+            headers=self._get_headers(),
+            impersonate="chrome110"
+        )
         
-        return url, headers, subtitles
+        return response.status_code in [200, 204]
+
+
+def get_playback_session(client: CrunchyrollClient, url_id: str) -> Tuple[str, Dict, List[Dict]]:
+    """
+    Return the playback session details including the MPD URL, headers, and subtitles.
+    
+    Parameters:
+        - client: Instance of CrunchyrollClient
+        - url_id: ID of the media to fetch
+    """
+    data = client.get_streams(url_id)
+    url = data.get('url')
+    
+    # Collect subtitles if available
+    subtitles = []
+    if 'subtitles' in data:
+        collected = []
+        for lang, info in data['subtitles'].items():
+            sub_url = info.get('url')
+
+            if not sub_url:
+                continue
+            
+            collected.append({
+                'language': lang, 
+                'url': sub_url, 
+                'format': info.get('format')
+            })
+
+        if collected:
+            subtitles = collected
+    
+    # Return the MPD URL, headers, and subtitles
+    headers = client._get_headers()
+    return url, headers, subtitles

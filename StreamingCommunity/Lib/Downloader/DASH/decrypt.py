@@ -16,6 +16,7 @@ from StreamingCommunity.Util.os import get_mp4decrypt_path
 console = Console()
 
 
+# NOTE!: SAREBBE MEGLIO FARLO PER OGNI FILE DURANTE IL DOWNLOAD ... MA PER ORA LO LASCIO COSI
 def decrypt_with_mp4decrypt(encrypted_path, kid, key, output_path=None, cleanup=True):
     """
     Decrypt an mp4/m4s file using mp4decrypt.

@@ -24,7 +24,7 @@
     "M3U8_DOWNLOAD": {
         "default_video_workers": 8,
         "default_audio_workers": 8,
-        "segment_timeout": 6,
+        "segment_timeout": 5,
         "specific_list_audio": [
             "ita"
         ],
@@ -49,8 +49,8 @@
     },
     "REQUESTS": {
         "verify": false,
-        "timeout": 20,
-        "max_retry": 8
+        "timeout": 15,
+        "max_retry": 3
     },
     "HOOKS": {
         "pre_run": [],
@@ -58,8 +58,8 @@
     },
     "SITE_LOGIN": {
         "crunchyroll": {
-            "etp_rt": "",
-            "x_cr_tab_id": ""
+            "device_id": "",
+            "etp_rt": ""
         }
     }
 }

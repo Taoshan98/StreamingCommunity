@@ -16,7 +16,7 @@ from StreamingCommunity.Util.os import os_manager, get_wvd_path
 
 
 # Logic class
-from .util.ScrapeSerie import GetSerieInfo, delete_stream_episode
+from .util.ScrapeSerie import GetSerieInfo
 from StreamingCommunity.Api.Template.Util import (
     manage_selection, 
     map_episode_title,
@@ -30,7 +30,7 @@ from StreamingCommunity.Api.Template.Class.SearchType import MediaItem
 
 # Player
 from StreamingCommunity import DASH_Downloader
-from .util.get_license import get_playback_session, get_auth_token, generate_device_id
+from .util.get_license import get_playback_session
 
 
 # Variable
@@ -52,6 +52,7 @@ def download_video(index_season_selected: int, index_episode_selected: int, scra
         - bool: Whether download was stopped
     """
     start_message()
+    client = scrape_serie.client
 
     # Get episode information
     obj_episode = scrape_serie.selectEpisode(index_season_selected, index_episode_selected-1)
@@ -64,10 +65,8 @@ def download_video(index_season_selected: int, index_episode_selected: int, scra
 
     # Generate mpd and license URLs
     url_id = obj_episode.get('url').split('/')[-1]
-    device_id = generate_device_id()
-    token_mpd = get_auth_token(device_id)
     
-    mpd_url, mpd_headers, mpd_list_sub = get_playback_session(token_mpd, device_id, url_id)
+    mpd_url, mpd_headers, mpd_list_sub = get_playback_session(client, url_id)
     parsed_url = urlparse(mpd_url)
     query_params = parse_qs(parsed_url.query)
 
@@ -101,7 +100,9 @@ def download_video(index_season_selected: int, index_episode_selected: int, scra
             pass
 
     # Delete episode stream
-    delete_stream_episode(url_id, query_params['playbackGuid'][0], mpd_headers)
+    token = query_params['playbackGuid'][0]
+    if token:
+        client.delete_active_stream(url_id, token)
 
     return status['path'], status['stopped']
 
