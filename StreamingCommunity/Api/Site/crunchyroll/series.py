@@ -101,8 +101,7 @@ def download_video(index_season_selected: int, index_episode_selected: int, scra
 
     # Delete episode stream
     token = query_params['playbackGuid'][0]
-    if token:
-        client.delete_active_stream(url_id, token)
+    client.delete_active_stream(url_id, token)
 
     return status['path'], status['stopped']
 

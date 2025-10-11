@@ -73,7 +73,7 @@ def title_search(query: str) -> int:
             params=params,
             headers=headers,
             timeout=max_timeout,
-            impersonate="chrome110"
+            impersonate="chrome136"
         )
         response.raise_for_status()
 

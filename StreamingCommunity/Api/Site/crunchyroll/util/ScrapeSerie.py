@@ -26,7 +26,7 @@ def get_series_seasons(series_id, headers, params):
         url,
         params=params,
         headers=headers,
-        impersonate="chrome110"
+        impersonate="chrome136"
     )
     return response
 
@@ -40,7 +40,7 @@ def get_season_episodes(season_id, headers, params):
         url,
         params=params,
         headers=headers,
-        impersonate="chrome110"
+        impersonate="chrome136"
     )
     return response
 
@@ -88,13 +88,10 @@ class GetSerieInfo:
         if seasons:
             self.series_name = seasons[0].get("series_title") or seasons[0].get("title")
 
-        for season in seasons:
-            season_num = season.get("season_number", 0)
-            season_name = season.get("title", f"Season {season_num}")
-
+        for i, season in enumerate(seasons, start=1):
             self.seasons_manager.add_season({
-                'number': season_num,
-                'name': season_name,
+                'number': i,
+                'name': season.get("title", f"Season {i}"),
                 'id': season.get('id')
             })
 
@@ -103,15 +100,10 @@ class GetSerieInfo:
         Fetch and cache episodes for a specific season number.
         """
         season = self.seasons_manager.get_season_by_number(season_number)
+        ep_response = get_season_episodes(season.id, self.headers, self.params)
 
-        if not season or getattr(season, 'id', None) is None:
-            logging.error(f"Season {season_number} not found or missing id.")
-            return []
-
-        season_id = season.id
-        ep_response = get_season_episodes(season_id, self.headers, self.params)
         if ep_response.status_code != 200:
-            logging.error(f"Failed to fetch episodes for season {season_id}")
+            logging.error(f"Failed to fetch episodes for season {season.id}")
             return []
 
         ep_data = ep_response.json()
@@ -149,7 +141,7 @@ class GetSerieInfo:
             url,
             params=params,
             headers=headers,
-            impersonate="chrome110"
+            impersonate="chrome136"
         )
 
         if response.status_code != 200:

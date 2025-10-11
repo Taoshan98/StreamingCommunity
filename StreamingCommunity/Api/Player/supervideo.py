@@ -42,7 +42,7 @@ class VideoSource:
             - str: The response content if successful, None otherwise.
         """
         try:
-            response = requests.get(url, headers=self.headers, timeout=MAX_TIMEOUT, impersonate="chrome110", verify=REQUEST_VERIFY)
+            response = requests.get(url, headers=self.headers, timeout=MAX_TIMEOUT, impersonate="chrome136", verify=REQUEST_VERIFY)
             if response.status_code >= 400:
                 logging.error(f"Request failed with status code: {response.status_code}")
                 return None

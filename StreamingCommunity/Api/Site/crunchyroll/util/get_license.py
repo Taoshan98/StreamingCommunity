@@ -18,7 +18,6 @@ class CrunchyrollClient:
         config = config_manager.get_dict("SITE_LOGIN", "crunchyroll")
         self.device_id = config.get('device_id')
         self.etp_rt = config.get('etp_rt')
-        self.preferred_audio_language = "ja-JP"
         self.locale = "it-IT"
         
         self.access_token = None
@@ -54,7 +53,7 @@ class CrunchyrollClient:
                 'device_type': 'Chrome on Windows',
                 'grant_type': 'etp_rt_cookie',
             },
-            impersonate="chrome110"
+            impersonate="chrome136"
         )
         
         if response.status_code == 400:
@@ -75,7 +74,7 @@ class CrunchyrollClient:
             cookies=self._get_cookies(),
             headers=self._get_headers(),
             params={'locale': self.locale},
-            impersonate="chrome110"
+            impersonate="chrome136"
         )
         
         if response.status_code == 403:
@@ -99,9 +98,9 @@ class CrunchyrollClient:
             f'https://www.crunchyroll.com/playback/v1/token/{media_id}/{token}',
             cookies=self._get_cookies(),
             headers=self._get_headers(),
-            impersonate="chrome110"
+            impersonate="chrome136"
         )
-        
+        response.raise_for_status()
         return response.status_code in [200, 204]
 
 

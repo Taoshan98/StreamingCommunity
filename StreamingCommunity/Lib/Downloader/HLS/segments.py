@@ -313,7 +313,7 @@ class M3U8_Segments:
             if not failed_indices:
                 break
 
-            console.print(f"[yellow]Retrying {len(failed_indices)} failed segments (attempt {global_retry_count+1}/{max_global_retries})...")
+            console.print(f" -- [yellow]Retrying {len(failed_indices)} failed segments (attempt {global_retry_count+1}/{max_global_retries})...")
             
             retry_tasks = [
                 self._download_single_segment(client, self.segments[i], i, temp_dir, semaphore, REQUEST_MAX_RETRY)

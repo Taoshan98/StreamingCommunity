@@ -20,6 +20,53 @@ console = Console()
 max_timeout = config_manager.get_int('REQUESTS', 'timeout')
 max_retry = config_manager.get_int('REQUESTS', 'max_retry')
 
+
+
+class CodecQuality:
+    """Utility class to rank codec quality"""
+    VIDEO_CODEC_RANK = {
+        'av01': 5,  # AV1
+        'vp9': 4,   # VP9
+        'vp09': 4,  # VP9
+        'hev1': 3,  # HEVC/H.265
+        'hvc1': 3,  # HEVC/H.265
+        'avc1': 2,  # H.264
+        'avc3': 2,  # H.264
+        'mp4v': 1,  # MPEG-4
+    }
+    
+    AUDIO_CODEC_RANK = {
+        'opus': 5,       # Opus
+        'mp4a.40.2': 4,  # AAC-LC
+        'mp4a.40.5': 3,  # AAC-HE
+        'mp4a': 2,       # Generic AAC
+        'ac-3': 2,       # Dolby Digital
+        'ec-3': 3,       # Dolby Digital Plus
+    }
+    
+    @staticmethod
+    def get_video_codec_rank(codec: Optional[str]) -> int:
+        """Get ranking for video codec"""
+        if not codec:
+            return 0
+        codec_lower = codec.lower()
+        for key, rank in CodecQuality.VIDEO_CODEC_RANK.items():
+            if codec_lower.startswith(key):
+                return rank
+        return 0
+    
+    @staticmethod
+    def get_audio_codec_rank(codec: Optional[str]) -> int:
+        """Get ranking for audio codec"""
+        if not codec:
+            return 0
+        codec_lower = codec.lower()
+        for key, rank in CodecQuality.AUDIO_CODEC_RANK.items():
+            if codec_lower.startswith(key):
+                return rank
+        return 0
+    
+
 class URLBuilder:
 
     @staticmethod
@@ -160,6 +207,7 @@ class RepresentationParser:
         codecs = rep_element.get('codecs')
         width = rep_element.get('width')
         height = rep_element.get('height')
+        audio_sampling_rate = rep_element.get('audioSamplingRate')
 
         # Try to find SegmentTemplate at Representation level
         rep_seg_template = rep_element.find('mpd:SegmentTemplate', self.ns)
@@ -172,14 +220,37 @@ class RepresentationParser:
         rep_base_url = self._resolve_base_url(rep_element, adapt_set, base_url)
         init_url, media_urls = self._build_segment_urls(seg_tmpl, rep_id, bandwidth, rep_base_url)
 
+        # Determine content type first
+        content_type = 'unknown'
+        if mime_type:
+            content_type = mime_type.split('/')[0]
+        elif width or height:
+            content_type = 'video'
+        elif audio_sampling_rate or (codecs and 'mp4a' in codecs.lower()):
+            content_type = 'audio'
+
+        # Clean language: convert None, empty string, or "undefined" to None
+        # For audio tracks without language, generate a generic name
+        clean_lang = None
+        if lang and lang.lower() not in ['undefined', 'none', '']:
+            clean_lang = lang
+        elif content_type == 'audio':
+
+            # Generate generic audio track name based on rep_id or bandwidth
+            if rep_id:
+                clean_lang = f"aud_{rep_id}"
+            else:
+                clean_lang = f"aud_{bandwidth or '0'}"
+
         return {
             'id': rep_id,
-            'type': (mime_type.split('/')[0]) if mime_type else 'unknown',
+            'type': content_type,
             'codec': codecs,
             'bandwidth': int(bandwidth) if bandwidth else 0,
             'width': int(width) if width else 0,
             'height': int(height) if height else 0,
-            'language': lang,
+            'audio_sampling_rate': int(audio_sampling_rate) if audio_sampling_rate else 0,
+            'language': clean_lang,
             'init_url': init_url,
             'segment_urls': media_urls
         }
@@ -192,13 +263,25 @@ class RepresentationParser:
         if adapt_set is not None:
             adapt_base = adapt_set.find('mpd:BaseURL', self.ns)
             if adapt_base is not None and adapt_base.text:
-                base = urljoin(base, adapt_base.text.strip())
+                base_text = adapt_base.text.strip()
+
+                # Handle BaseURL that might already be absolute
+                if base_text.startswith('http'):
+                    base = base_text
+                else:
+                    base = urljoin(base, base_text)
 
         # Representation-level BaseURL
         if rep_element is not None:
             rep_base = rep_element.find('mpd:BaseURL', self.ns)
             if rep_base is not None and rep_base.text:
-                base = urljoin(base, rep_base.text.strip())
+                base_text = rep_base.text.strip()
+
+                # Handle BaseURL that might already be absolute
+                if base_text.startswith('http'):
+                    base = base_text
+                else:
+                    base = urljoin(base, base_text)
 
         return base
 
@@ -258,6 +341,62 @@ class RepresentationParser:
 
 class MPDParser:
     @staticmethod
+    def _deduplicate_videos(representations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Remove duplicate video representations with same resolution.
+        Keep the one with best codec, then highest bandwidth.
+        """
+        resolution_map = {}
+        
+        for rep in representations:
+            key = (rep['width'], rep['height'])
+            
+            if key not in resolution_map:
+                resolution_map[key] = rep
+            else:
+                existing = resolution_map[key]
+                
+                # Compare codec quality first
+                existing_codec_rank = CodecQuality.get_video_codec_rank(existing['codec'])
+                new_codec_rank = CodecQuality.get_video_codec_rank(rep['codec'])
+                
+                if new_codec_rank > existing_codec_rank:
+                    resolution_map[key] = rep
+                elif new_codec_rank == existing_codec_rank and rep['bandwidth'] > existing['bandwidth']:
+                    resolution_map[key] = rep
+        
+        return list(resolution_map.values())
+    
+    @staticmethod
+    def _deduplicate_audios(representations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Remove duplicate audio representations.
+        Group by (language, sampling_rate) and keep the one with best codec, then highest bandwidth.
+        """
+        audio_map = {}
+        
+        for rep in representations:
+
+            # Use both language and sampling rate as key to differentiate audio tracks
+            key = (rep['language'], rep['audio_sampling_rate'])
+            
+            if key not in audio_map:
+                audio_map[key] = rep
+            else:
+                existing = audio_map[key]
+                
+                # Compare codec quality first
+                existing_codec_rank = CodecQuality.get_audio_codec_rank(existing['codec'])
+                new_codec_rank = CodecQuality.get_audio_codec_rank(rep['codec'])
+                
+                if new_codec_rank > existing_codec_rank:
+                    audio_map[key] = rep
+                elif new_codec_rank == existing_codec_rank and rep['bandwidth'] > existing['bandwidth']:
+                    audio_map[key] = rep
+        
+        return list(audio_map.values())
+
+    @staticmethod
     def get_best(representations):
         """
         Returns the video representation with the highest resolution/bandwidth, or audio with highest bandwidth.
@@ -305,6 +444,7 @@ class MPDParser:
         self._extract_namespace()
         self._extract_pssh()
         self._parse_representations()
+        self._deduplicate_representations()
 
     def _fetch_and_parse_mpd(self, custom_headers: Dict[str, str]) -> None:
         """Fetch MPD content and parse XML"""
@@ -322,8 +462,8 @@ class MPDParser:
             except Exception as e:
                 if attempt == max_retry:
                     raise e
-                
-                console.print(f"[bold yellow]Retrying... ({attempt + 1}/{max_retry})[/bold yellow]")
+
+                console.print(f"[bold yellow]Retrying manifest request ... ({attempt + 1}/{max_retry})[/bold yellow]")
 
     def _extract_namespace(self) -> None:
         """Extract and register namespaces from the root element"""
@@ -352,6 +492,16 @@ class MPDParser:
             representations = representation_parser.parse_adaptation_set(adapt_set, base_url)
             self.representations.extend(representations)
 
+    def _deduplicate_representations(self) -> None:
+        """Remove duplicate video and audio representations"""
+        videos = [r for r in self.representations if r['type'] == 'video']
+        audios = [r for r in self.representations if r['type'] == 'audio']
+        others = [r for r in self.representations if r['type'] not in ['video', 'audio']]
+        
+        deduplicated_videos = self._deduplicate_videos(videos)
+        deduplicated_audios = self._deduplicate_audios(audios)
+        self.representations = deduplicated_videos + deduplicated_audios + others
+
     def _get_initial_base_url(self) -> str:
         """Get the initial base URL from MPD-level BaseURL"""
         base_url = self.mpd_url.rsplit('/', 1)[0] + '/'
@@ -359,7 +509,13 @@ class MPDParser:
         # MPD-level BaseURL
         mpd_base = self.root.find('mpd:BaseURL', self.ns)
         if mpd_base is not None and mpd_base.text:
-            base_url = urljoin(base_url, mpd_base.text.strip())
+            base_text = mpd_base.text.strip()
+
+            # Handle BaseURL that might already be absolute
+            if base_text.startswith('http'):
+                base_url = base_text
+            else:
+                base_url = urljoin(base_url, base_text)
             
         return base_url
     
@@ -425,19 +581,18 @@ class MPDParser:
         Returns: (selected_audio, list_available_audio_langs, filter_custom_audio, downloadable_audio)
         """
         audio_reps = self.get_audios()
-        list_available_audio_langs = [
-            rep['language'] or "None" for rep in audio_reps
-        ]
+        
+        # Include all languages (including generated ones like aud_XXX)
+        list_available_audio_langs = [rep['language'] for rep in audio_reps]
 
         selected_audio = None
         filter_custom_audio = "First"
 
         if preferred_audio_langs:
-            
             # Search for the first available language in order of preference
             for lang in preferred_audio_langs:
                 for rep in audio_reps:
-                    if (rep['language'] or "None").lower() == lang.lower():
+                    if rep['language'] and rep['language'].lower() == lang.lower():
                         selected_audio = rep
                         filter_custom_audio = lang
                         break
@@ -448,5 +603,5 @@ class MPDParser:
         else:
             selected_audio = self.get_best_audio()
 
-        downloadable_audio = selected_audio['language'] or "None" if selected_audio else "N/A"
+        downloadable_audio = selected_audio['language'] if selected_audio else "N/A"
         return selected_audio, list_available_audio_langs, filter_custom_audio, downloadable_audio
