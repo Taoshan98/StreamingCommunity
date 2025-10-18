@@ -146,7 +146,6 @@ mpd_url = "https://example.com/stream.mpd"
 license_url = "https://example.com/get_license"
 
 dash_process = DASH_Downloader(
-    cdm_device=get_wvd_path(),
     license_url=license_url,
     mpd_url=mpd_url,
     output_path="output.mp4",
@@ -231,7 +230,6 @@ To enable qBittorrent integration, follow the setup guide [here](https://github.
         "specific_list_audio": [
             "ita"
         ],
-        "download_subtitle": true,
         "merge_subs": true,
         "specific_list_subtitles": [
             "ita",    // Specify language codes or use ["*"] to download all available subtitles

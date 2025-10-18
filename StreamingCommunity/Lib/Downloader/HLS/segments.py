@@ -11,7 +11,6 @@ from typing import Dict, Optional
 
 # External libraries
 import httpx
-from curl_cffi import requests
 from tqdm import tqdm
 from rich.console import Console
 
@@ -19,6 +18,7 @@ from rich.console import Console
 # Internal utilities
 from StreamingCommunity.Util.color import Colors
 from StreamingCommunity.Util.headers import get_userAgent
+from StreamingCommunity.Util.http_client import create_client_curl
 from StreamingCommunity.Util.config_json import config_manager
 
 
@@ -98,7 +98,7 @@ class M3U8_Segments:
         self.key_base_url = f"{parsed_url.scheme}://{parsed_url.netloc}/"
         
         try:
-            response = requests.get(url=key_uri, headers=self.custom_headers, timeout=MAX_TIMEOUT, allow_redirects=True, impersonate="chrome136")
+            response = create_client_curl(headers=self.custom_headers).get(key_uri)
             response.raise_for_status()
 
             hex_content = binascii.hexlify(response.content).decode('utf-8')
@@ -145,7 +145,7 @@ class M3U8_Segments:
         """
         if self.is_index_url:
             try:
-                response = requests.get(url=self.url, headers=self.custom_headers, timeout=MAX_TIMEOUT, allow_redirects=True, impersonate="chrome136")
+                response = create_client_curl(headers=self.custom_headers).get(self.url)
                 response.raise_for_status()
                 
                 self.parse_data(response.text)
@@ -168,7 +168,7 @@ class M3U8_Segments:
         """
         Get the file path for a temporary segment.
         """
-        return os.path.join(temp_dir, f"seg_{index:06d}.tmp")
+        return os.path.join(temp_dir, f"seg_{index:06d}.ts")
 
     async def _download_init_segment(self, client: httpx.AsyncClient, output_path: str, progress_bar: tqdm) -> bool:
         """
@@ -214,7 +214,7 @@ class M3U8_Segments:
     async def _download_single_segment(self, client: httpx.AsyncClient, ts_url: str, index: int, temp_dir: str,
                                        semaphore: asyncio.Semaphore, max_retry: int) -> tuple:
         """
-        Downloads a single TS segment and saves to temp file.
+        Downloads a single TS segment and saves to temp file IMMEDIATELY.
 
         Returns:
             tuple: (index, success, retry_count, file_size)
@@ -242,11 +242,13 @@ class M3U8_Segments:
                                 return index, False, attempt, 0
                             raise e
 
-                    # Write to temp file
+                    # Write segment to temp file IMMEDIATELY
                     with open(temp_file, 'wb') as f:
                         f.write(segment_content)
-
-                    return index, True, attempt, len(segment_content)
+                    
+                    size = len(segment_content)
+                    del segment_content
+                    return index, True, attempt, size
 
                 except Exception:
                     if attempt + 1 == max_retry:
@@ -350,6 +352,7 @@ class M3U8_Segments:
                 if os.path.exists(temp_file):
                     with open(temp_file, 'rb') as infile:
                         outfile.write(infile.read())
+                    os.remove(temp_file)
 
     async def download_segments_async(self, description: str, type: str):
         """
@@ -467,13 +470,12 @@ class M3U8_Segments:
         """Ensure resource cleanup and final reporting."""
         progress_bar.close()
         
-        # Delete temp segment files
+        # Delete temp directory if exists
         if temp_dir and os.path.exists(temp_dir):
             try:
-                for idx in range(len(self.segments)):
-                    temp_file = self._get_temp_segment_path(temp_dir, idx)
-                    if os.path.exists(temp_file):
-                        os.remove(temp_file)
+                # Remove any remaining files (in case of interruption)
+                for file in os.listdir(temp_dir):
+                    os.remove(os.path.join(temp_dir, file))
                 os.rmdir(temp_dir)
             except Exception as e:
                 console.print(f"[yellow]Warning: Could not clean temp directory: {e}")
@@ -483,7 +485,6 @@ class M3U8_Segments:
 
     def _display_error_summary(self) -> None:
         """Generate final error report."""
-        console.print(f"\n[green]Retry Summary: "
-            f"[cyan]Max retries: [red]{self.info_maxRetry} [white] | "
+        console.print(f" [cyan]Max retries: [red]{self.info_maxRetry} [white] | "
             f"[cyan]Total retries: [red]{self.info_nRetry} [white] | "
             f"[cyan]Failed segments: [red]{self.info_nFailed}")

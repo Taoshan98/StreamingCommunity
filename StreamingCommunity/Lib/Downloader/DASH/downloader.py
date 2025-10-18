@@ -1,7 +1,6 @@
 # 25.07.25
 
 import os
-import time
 import shutil
 
 
@@ -13,7 +12,7 @@ from rich.table import Table
 
 # Internal utilities
 from StreamingCommunity.Util.config_json import config_manager
-from StreamingCommunity.Util.os import os_manager, internet_manager
+from StreamingCommunity.Util.os import os_manager, internet_manager, get_wvd_path
 from StreamingCommunity.Util.http_client import create_client
 from StreamingCommunity.Util.headers import get_userAgent
 
@@ -32,7 +31,6 @@ from ...FFmpeg import print_duration_table, join_audios, join_video, join_subtit
 # Config
 DOWNLOAD_SPECIFIC_AUDIO = config_manager.get_list('M3U8_DOWNLOAD', 'specific_list_audio')
 DOWNLOAD_SPECIFIC_SUBTITLE = config_manager.get_list('M3U8_DOWNLOAD', 'specific_list_subtitles')
-ENABLE_SUBTITLE = config_manager.get_bool('M3U8_DOWNLOAD', 'download_subtitle')
 MERGE_SUBTITLE = config_manager.get_bool('M3U8_DOWNLOAD', 'merge_subs')
 FILTER_CUSTOM_REOLUTION = str(config_manager.get('M3U8_CONVERSION', 'force_resolution')).strip().lower()
 CLEANUP_TMP = config_manager.get_bool('M3U8_DOWNLOAD', 'cleanup_tmp_folder')
@@ -45,18 +43,17 @@ console = Console()
 
 
 class DASH_Downloader:
-    def __init__(self, cdm_device, license_url, mpd_url, mpd_sub_list: list = None, output_path: str = None):
+    def __init__(self, license_url, mpd_url, mpd_sub_list: list = None, output_path: str = None):
         """
         Initialize the DASH Downloader with necessary parameters.
 
         Parameters:
-            - cdm_device (str): Path to the CDM device for decryption.
             - license_url (str): URL to obtain the license for decryption.
             - mpd_url (str): URL of the MPD manifest file.
             - mpd_sub_list (list): List of subtitle dicts with keys: 'language', 'url', 'format'.
             - output_path (str): Path to save the final output file.
         """
-        self.cdm_device = cdm_device
+        self.cdm_device = get_wvd_path()
         self.license_url = license_url
         self.mpd_url = mpd_url
         self.mpd_sub_list = mpd_sub_list or []
@@ -197,49 +194,28 @@ class DASH_Downloader:
         Download subtitle files based on configuration with retry mechanism.
         Returns True if successful or if no subtitles to download, False on critical error.
         """
-        if not ENABLE_SUBTITLE or not self.selected_subs:
-            return True
-        
-        headers = {'User-Agent': get_userAgent()}
-        client = create_client(headers=headers)
+        client = create_client(headers={'User-Agent': get_userAgent()})
         
         for sub in self.selected_subs:
-            language = sub.get('language', 'unknown')
-            url = sub.get('url')
-            fmt = sub.get('format', 'vtt')
+            try:
+                language = sub.get('language', 'unknown')
+                fmt = sub.get('format', 'vtt')
+
+                # Download subtitle
+                response = client.get(sub.get('url'))
+                response.raise_for_status()
+                
+                # Save subtitle file and make request
+                sub_filename = f"{language}.{fmt}"
+                sub_path = os.path.join(self.subs_dir, sub_filename)
+                
+                with open(sub_path, 'wb') as f:
+                    f.write(response.content)
+                    
+            except Exception as e:
+                console.print(f"[red]Error downloading subtitle {language}: {e}[/red]")
+                return False
             
-            if not url:
-                console.print(f"[yellow]Warning: No URL for subtitle {language}[/yellow]")
-                continue
-            
-            # Retry mechanism for downloading subtitles
-            success = False
-            for attempt in range(RETRY_LIMIT):
-                try:
-                    # Download subtitle
-                    response = client.get(url)
-                    response.raise_for_status()
-                    
-                    # Save subtitle file
-                    sub_filename = f"{language}.{fmt}"
-                    sub_path = os.path.join(self.subs_dir, sub_filename)
-                    
-                    with open(sub_path, 'wb') as f:
-                        f.write(response.content)
-                    
-                    success = True
-                    break
-                    
-                except Exception as e:
-                    if attempt < RETRY_LIMIT - 1:
-                        console.print(f"[yellow]Attempt {attempt + 1}/{RETRY_LIMIT} failed for subtitle {language}: {e}. Retrying...[/yellow]")
-                        time.sleep(1.5 ** attempt)
-                    else:
-                        console.print(f"[yellow]Warning: Failed to download subtitle {language} after {RETRY_LIMIT} attempts: {e}[/yellow]")
-            
-            if not success:
-                continue
-        
         return True
 
     def download_and_decrypt(self, custom_headers=None, custom_payload=None):
@@ -516,8 +492,8 @@ class DASH_Downloader:
             console.print("[red]Video file missing, cannot export[/red]")
             return None
         
-        # Merge subtitles if enabled and available
-        if MERGE_SUBTITLE and ENABLE_SUBTITLE and self.selected_subs:
+        # Merge subtitles if available
+        if MERGE_SUBTITLE and self.selected_subs:
 
             # Check which subtitle files actually exist
             existing_sub_tracks = []
