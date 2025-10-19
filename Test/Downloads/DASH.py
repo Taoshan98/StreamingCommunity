@@ -1,4 +1,5 @@
 # 29.07.25
+# ruff: noqa: E402
 
 import os
 import sys

@@ -93,7 +93,7 @@ def update():
         console.print(f"\n[cyan]New version available: [yellow]{last_version}")
 
     console.print(f"\n[red]{__title__} has been downloaded [yellow]{total_download_count} [red]times, but only [yellow]{percentual_stars}% [red]of users have starred it.\n\
-        [green]Current installed version: [yellow]{current_version} [green]last commit: [white]''[yellow]{latest_commit_message.splitlines()[0]}[white]''\n\
+        [green]Current installed version: [yellow]{current_version} [green]last commit: [white]'[yellow]{latest_commit_message.splitlines()[0]}[white]'\n\
         [cyan]Help the repository grow today by leaving a [yellow]star [cyan]and [yellow]sharing [cyan]it with others online!")
     
     time.sleep(1)

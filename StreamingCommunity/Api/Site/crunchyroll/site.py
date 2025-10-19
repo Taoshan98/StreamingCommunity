@@ -1,7 +1,5 @@
 # 16.03.25
 
-import sys
-
 
 # External libraries
 from rich.console import Console
@@ -42,13 +40,13 @@ def title_search(query: str) -> int:
     config = config_manager.get_dict("SITE_LOGIN", "crunchyroll")
     if not config.get('device_id') or not config.get('etp_rt'):
         console.print("[bold red] device_id or etp_rt is missing or empty in config.json.[/bold red]")
-        sys.exit(0)
+        raise Exception("device_id or etp_rt is missing or empty in config.json.")
 
     # Initialize Crunchyroll client
     client = CrunchyrollClient()
     if not client.start():
         console.print("[bold red] Failed to authenticate with Crunchyroll.[/bold red]")
-        sys.exit(0)
+        raise Exception("Failed to authenticate with Crunchyroll.")
 
     # Build new Crunchyroll API search URL
     api_url = "https://www.crunchyroll.com/content/v2/discover/search"

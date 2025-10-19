@@ -58,33 +58,25 @@ def title_search(query: str) -> int:
 
     # Process items
     for item in items:
-        item_type = "tv" if item.get("__typename") == "SeriesItem" else "film"
+        is_series = (
+            item.get("__typename") == "SeriesItem"
+            or item.get("cardLink", {}).get("referenceType") == "series"
+            or bool(item.get("seasons"))
+        )
+        item_type = "tv" if is_series else "film"
 
-        # Bastava un campo data ma no ...
-        date = item.get("year")
+        # Get date
+        date = item.get("year") or ''
         if not date:
-            updated = item.get("updated")
+            updated = item.get("updated") or item.get("r") or ''
             if updated:
                 try:
-                    date = datetime.fromisoformat(updated.replace("Z", "+00:00")).year
+                    date = datetime.fromisoformat(str(updated).replace("Z", "+00:00")).year
                 except Exception:
-                    try:
-                        timestamp_ms = int(updated)
-                        date = datetime.fromtimestamp(timestamp_ms / 1000).year
-                    except Exception:
-                        date = ""
-
-        date = item.get('year', '')
-        if not date and item.get('updated'):
-            try:
-                
-                timestamp_ms = int(item.get('updated', 0))
-                date = datetime.fromtimestamp(timestamp_ms / 1000).year
-            except (ValueError, TypeError):
-                date = ''
+                    date = ''
 
         media_search_manager.add_media({
-            "url": item.get("cardLink", "").get("value", ""),
+            "url": item.get("cardLink", {}).get("value", ""),
             "id": item.get("guid", ""),
             "name": item.get("cardTitle", "No Title"),
             "type": item_type,
@@ -92,4 +84,4 @@ def title_search(query: str) -> int:
             "date": date,
         })
 
-        return media_search_manager.get_length()
+    return media_search_manager.get_length()
