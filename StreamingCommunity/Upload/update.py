@@ -46,6 +46,19 @@ async def async_github_requests():
         ]
         return await asyncio.gather(*tasks)
 
+def get_execution_mode():
+    """
+    Determine how the application is being executed.
+    """
+    if getattr(sys, 'frozen', False):
+        return 'exe'
+
+    try:
+        importlib.metadata.version(__title__)
+        return 'pip'
+    except importlib.metadata.PackageNotFoundError:
+        return 'python'
+
 def update():
     """
     Check for updates on GitHub and display relevant information.
@@ -82,6 +95,9 @@ def update():
     except importlib.metadata.PackageNotFoundError:
         current_version = source_code_version
 
+    # Get execution mode
+    execution_mode = get_execution_mode()
+
     # Get commit details
     latest_commit = response_commits[0] if response_commits else None
     if latest_commit:
@@ -93,7 +109,7 @@ def update():
         console.print(f"\n[cyan]New version available: [yellow]{last_version}")
 
     console.print(f"\n[red]{__title__} has been downloaded [yellow]{total_download_count} [red]times, but only [yellow]{percentual_stars}% [red]of users have starred it.\n\
-        [green]Current installed version: [yellow]{current_version} [green]last commit: [white]'[yellow]{latest_commit_message.splitlines()[0]}[white]'\n\
+        [purple]{execution_mode} [yellow]- [green]Current installed version: [yellow]{current_version} [green]last commit: [white]'[yellow]{latest_commit_message.splitlines()[0]}[white]'\n\
         [cyan]Help the repository grow today by leaving a [yellow]star [cyan]and [yellow]sharing [cyan]it with others online!")
     
     time.sleep(1)
