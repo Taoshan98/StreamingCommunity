@@ -10,6 +10,7 @@ from rich.prompt import Prompt
 
 
 # Internal utilities
+from StreamingCommunity.Util.config_json import config_manager
 from StreamingCommunity.Util.headers import get_headers, get_userAgent
 from StreamingCommunity.Util.message import start_message
 
@@ -38,6 +39,7 @@ from StreamingCommunity.Api.Player.mediapolisvod import VideoSource
 # Variable
 msg = Prompt()
 console = Console()
+extension_output = config_manager.get("M3U8_CONVERSION", "extension")
 
 
 def download_video(index_season_selected: int, index_episode_selected: int, scrape_serie: GetSerieInfo) -> Tuple[str,bool]:
@@ -60,7 +62,7 @@ def download_video(index_season_selected: int, index_episode_selected: int, scra
     console.print(f"\n[bold yellow]Download:[/bold yellow] [red]{site_constant.SITE_NAME}[/red] → [cyan]{scrape_serie.series_name}[/cyan] \\ [bold magenta]{obj_episode.name}[/bold magenta] ([cyan]S{index_season_selected}E{index_episode_selected}[/cyan]) \n")
 
     # Define filename and path
-    mp4_name = f"{map_episode_title(scrape_serie.series_name, index_season_selected, index_episode_selected, obj_episode.name)}.mp4"
+    mp4_name = f"{map_episode_title(scrape_serie.series_name, index_season_selected, index_episode_selected, obj_episode.name)}.{extension_output}"
     mp4_path = os.path.join(site_constant.SERIES_FOLDER, scrape_serie.series_name, f"S{index_season_selected}")
 
     # Get streaming URL

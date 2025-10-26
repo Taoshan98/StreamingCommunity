@@ -134,7 +134,7 @@ def get_playback_url(CONTENT_ID):
         return playback_json
     
     except Exception as e:
-        raise RuntimeError(f"Failed to get playback URL: {e}")
+        raise RuntimeError(f"Failed to get playback URL: {e}, {resp_json if 'resp_json' in locals() else 'No response'}")
 
 def parse_smil_for_media_info(smil_xml):
     """

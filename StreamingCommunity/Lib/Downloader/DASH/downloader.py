@@ -41,6 +41,7 @@ EXTENSION_OUTPUT = config_manager.get("M3U8_CONVERSION", "extension")
 
 # Variable
 console = Console()
+extension_output = config_manager.get("M3U8_CONVERSION", "extension")
 
 
 class DASH_Downloader:
@@ -303,7 +304,7 @@ class DASH_Downloader:
                     self.current_download_type = None
 
                 # Decrypt video
-                decrypted_path = os.path.join(self.decrypted_dir, "video.mp4")
+                decrypted_path = os.path.join(self.decrypted_dir, f"video.{extension_output}")
                 result_path = decrypt_with_mp4decrypt(
                     "Video", encrypted_path, KID, KEY, output_path=decrypted_path
                 )
@@ -360,7 +361,7 @@ class DASH_Downloader:
                     self.current_download_type = None
 
                 # Decrypt audio
-                decrypted_path = os.path.join(self.decrypted_dir, "audio.mp4")
+                decrypted_path = os.path.join(self.decrypted_dir, f"audio.{extension_output}")
                 result_path = decrypt_with_mp4decrypt(
                     f"Audio {audio_language}", encrypted_path, KID, KEY, output_path=decrypted_path
                 )
@@ -436,7 +437,7 @@ class DASH_Downloader:
                     self.current_download_type = None
             
             # NO DECRYPTION: just copy/move to decrypted folder
-            decrypted_path = os.path.join(self.decrypted_dir, "video.mp4")
+            decrypted_path = os.path.join(self.decrypted_dir, f"video.{extension_output}")
             if os.path.exists(encrypted_path) and not os.path.exists(decrypted_path):
                 shutil.copy2(encrypted_path, decrypted_path)
 
@@ -488,7 +489,7 @@ class DASH_Downloader:
                     self.current_download_type = None
             
             # NO DECRYPTION: just copy/move to decrypted folder
-            decrypted_path = os.path.join(self.decrypted_dir, "audio.mp4")
+            decrypted_path = os.path.join(self.decrypted_dir, f"audio.{extension_output}")
             if os.path.exists(encrypted_path) and not os.path.exists(decrypted_path):
                 shutil.copy2(encrypted_path, decrypted_path)
                 
@@ -509,8 +510,8 @@ class DASH_Downloader:
             return output_file
         
         # Definition of decrypted files
-        video_file = os.path.join(self.decrypted_dir, "video.mp4")
-        audio_file = os.path.join(self.decrypted_dir, "audio.mp4")
+        video_file = os.path.join(self.decrypted_dir, f"video.{extension_output}")
+        audio_file = os.path.join(self.decrypted_dir, f"audio.{extension_output}")
         output_file = self.original_output_path
         
         # Set the output file path for status tracking
@@ -548,7 +549,7 @@ class DASH_Downloader:
             if existing_sub_tracks:
 
                 # Create temporary file for subtitle merge
-                temp_output = output_file.replace('.mp4', '_temp.mp4')
+                temp_output = output_file.replace(f'.{extension_output}', f'_temp.{extension_output}')
                 
                 try:
                     final_file = join_subtitle(

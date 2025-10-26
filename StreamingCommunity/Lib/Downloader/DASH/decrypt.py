@@ -13,14 +13,16 @@ from tqdm import tqdm
 
 
 # Internal utilities
+from StreamingCommunity.Util.config_json import config_manager
 from StreamingCommunity.Util.os import get_mp4decrypt_path
 from StreamingCommunity.Util.color import Colors
 
+
 # Variable
 console = Console()
+extension_output = config_manager.get("M3U8_CONVERSION", "extension")
 
 
-# NOTE!: SAREBBE MEGLIO FARLO PER OGNI FILE DURANTE IL DOWNLOAD ... MA PER ORA LO LASCIO COSI
 def decrypt_with_mp4decrypt(type, encrypted_path, kid, key, output_path=None, cleanup=True):
     """
     Decrypt an mp4/m4s file using mp4decrypt.
@@ -51,7 +53,7 @@ def decrypt_with_mp4decrypt(type, encrypted_path, kid, key, output_path=None, cl
         return None
 
     if not output_path:
-        output_path = os.path.splitext(encrypted_path)[0] + "_decrypted.mp4"
+        output_path = os.path.splitext(encrypted_path)[0] + f"_decrypted.{extension_output}"
 
     # Get file size for progress tracking
     file_size = os.path.getsize(encrypted_path)
@@ -118,7 +120,7 @@ def decrypt_with_mp4decrypt(type, encrypted_path, kid, key, output_path=None, cl
             if os.path.exists(encrypted_path):
                 os.remove(encrypted_path)
 
-            temp_dec = os.path.splitext(encrypted_path)[0] + "_decrypted.mp4"
+            temp_dec = os.path.splitext(encrypted_path)[0] + f"_decrypted.{extension_output}"
 
             # Do not delete the final output!
             if temp_dec != output_path and os.path.exists(temp_dec):

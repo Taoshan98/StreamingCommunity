@@ -42,9 +42,10 @@
         "use_gpu": false,
         "param_video": ["-c:v", "libx265", "-crf", "28", "-preset", "medium"],
         "param_audio": ["-c:a", "libopus", "-b:a", "128k"],
+        "param_subtitles": ["-c:s", "webvtt"],
         "param_final": ["-c", "copy"],
         "force_resolution": "Best",
-        "extension": ".mp4"
+        "extension": ".mkv"
     },
     "REQUESTS": {
         "verify": false,

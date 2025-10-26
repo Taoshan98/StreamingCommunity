@@ -39,6 +39,7 @@ TELEGRAM_BOT = config_manager.get_bool('DEFAULT', 'telegram_bot')
 # Variable
 msg = Prompt()
 console = Console()
+extension_output = config_manager.get("M3U8_CONVERSION", "extension")
 
 
 class InterruptHandler:
@@ -186,12 +187,12 @@ def MP4_downloader(url: str, path: str, referer: str = None, headers_: dict = No
                 f"[bold green]Download completed{' (Partial)' if interrupt_handler.force_quit else ''}![/bold green]\n"
                 f"[cyan]File size: [bold red]{internet_manager.format_file_size(os.path.getsize(path))}[/bold red]\n"
                 f"[cyan]Duration: [bold]{print_duration_table(path, description=False, return_string=True)}[/bold]", 
-                title=f"{os.path.basename(path.replace('.mp4', ''))}", 
+                title=f"{os.path.basename(path.replace(f'.{extension_output}', ''))}", 
                 border_style="green"
             ))
 
             if TELEGRAM_BOT:
-                message = f"Download completato{'(Parziale)' if interrupt_handler.force_quit else ''}\nDimensione: {internet_manager.format_file_size(os.path.getsize(path))}\nDurata: {print_duration_table(path, description=False, return_string=True)}\nTitolo: {os.path.basename(path.replace('.mp4', ''))}"
+                message = f"Download completato{'(Parziale)' if interrupt_handler.force_quit else ''}\nDimensione: {internet_manager.format_file_size(os.path.getsize(path))}\nDurata: {print_duration_table(path, description=False, return_string=True)}\nTitolo: {os.path.basename(path.replace(f'.{extension_output}', ''))}"
                 clean_message = re.sub(r'\[[a-zA-Z]+\]', '', message)
                 bot.send_message(clean_message, None)
 
