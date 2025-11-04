@@ -90,11 +90,11 @@ class TVShowManager:
         """
         if not data_slice:
             logging.error("Nothing to display.")
-            return
+            return 404
             
         if not self.column_info:
             logging.error("Error: Column information not configured.")
-            return
+            return 404
 
         # Create table with specified style
         table = Table(
@@ -202,7 +202,9 @@ class TVShowManager:
                 self.slice_end = min(self.step, total_items)
                 current_slice = self.tv_shows[self.slice_start:self.slice_end]
             
-            self.display_data(current_slice)
+            result_func = self.display_data(current_slice)
+            if result_func == 404:
+                sys.exit(1)
 
             # Get research function from call stack
             research_func = next((
