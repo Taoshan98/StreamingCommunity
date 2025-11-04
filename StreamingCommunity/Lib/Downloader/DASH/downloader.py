@@ -570,7 +570,7 @@ class DASH_Downloader:
         
         # Handle failed sync case
         if use_shortest:
-            new_filename = output_file.replace(EXTENSION_OUTPUT, f"_failed_sync{EXTENSION_OUTPUT}")
+            new_filename = output_file.replace(EXTENSION_OUTPUT, f"_failed_sync.{EXTENSION_OUTPUT}")
             if os.path.exists(output_file):
                 os.rename(output_file, new_filename)
                 output_file = new_filename

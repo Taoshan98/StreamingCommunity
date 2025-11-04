@@ -690,11 +690,11 @@ class HLS_Downloader:
         # Rename output file if there were missing segments or shortest used
         new_filename = self.path_manager.output_path
         if missing_ts and use_shortest:
-            new_filename = new_filename.replace(EXTENSION_OUTPUT, f"_failed_sync_ts{EXTENSION_OUTPUT}")
+            new_filename = new_filename.replace(EXTENSION_OUTPUT, f"_failed_sync_ts.{EXTENSION_OUTPUT}")
         elif missing_ts:
-            new_filename = new_filename.replace(EXTENSION_OUTPUT, f"_failed_ts{EXTENSION_OUTPUT}")
+            new_filename = new_filename.replace(EXTENSION_OUTPUT, f"_failed_ts.{EXTENSION_OUTPUT}")
         elif use_shortest:
-            new_filename = new_filename.replace(EXTENSION_OUTPUT, f"_failed_sync{EXTENSION_OUTPUT}")
+            new_filename = new_filename.replace(EXTENSION_OUTPUT, f"_failed_sync.{EXTENSION_OUTPUT}")
 
         # Rename the file accordingly
         if missing_ts or use_shortest:
