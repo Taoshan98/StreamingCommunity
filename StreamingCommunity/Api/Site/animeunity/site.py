@@ -91,14 +91,14 @@ def title_search(query: str) -> int:
             'title': query,
             'type': False,
             'year': False,
-            'order': 'Lista A-Z',
+            'order': False,
             'status': False,
             'genres': False,
             'offset': 0,
             'dubbed': False,
-            'season': False
+            'season': False,
         }
-        response2 = create_client_curl(headers=headers).post(f'{site_constant.FULL_URL}/archivio/get-animes', cookies=cookies, data=json_data)
+        response2 = create_client_curl(headers=headers).post(f'{site_constant.FULL_URL}/archivio/get-animes', cookies=cookies, json=json_data)
         response2.raise_for_status()
         process_results(response2.json().get('records', []), seen_titles, media_search_manager, choices)
 

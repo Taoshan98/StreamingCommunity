@@ -45,12 +45,12 @@
         "param_subtitles": ["-c:s", "webvtt"],
         "param_final": ["-c", "copy"],
         "force_resolution": "Best",
-        "extension": "mkv"
+        "extension": "mp4"
     },
     "REQUESTS": {
         "verify": false,
         "timeout": 15,
-        "max_retry": 3
+        "max_retry": 5
     },
     "HOOKS": {
         "pre_run": [],
