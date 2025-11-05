@@ -16,15 +16,15 @@
         "add_siteName": false
     },
     "QBIT_CONFIG": {
-        "host": "192.168.1.51",
-        "port": "6666",
-        "user": "admin",
-        "pass": "adminadmin"
+        "host": "192.168.1.1",
+        "port": "5555",
+        "user": "root",
+        "pass": "toor"
     },
     "M3U8_DOWNLOAD": {
         "default_video_workers": 8,
         "default_audio_workers": 8,
-        "segment_timeout": 5,
+        "segment_timeout": 6,
         "enable_retry": true,
         "specific_list_audio": [
             "ita"
@@ -45,12 +45,12 @@
         "param_subtitles": ["-c:s", "webvtt"],
         "param_final": ["-c", "copy"],
         "force_resolution": "Best",
-        "extension": "mp4"
+        "extension": "mkv"
     },
     "REQUESTS": {
         "verify": false,
-        "timeout": 15,
-        "max_retry": 5
+        "timeout": 12,
+        "max_retry": 8
     },
     "HOOKS": {
         "pre_run": [],
