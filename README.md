@@ -6,18 +6,12 @@
 [![Issues](https://img.shields.io/github/issues/Arrowar/StreamingCommunity?logo=github&logoColor=white&labelColor=2d3748&color=ed8936&style=for-the-badge)](https://github.com/Arrowar/StreamingCommunity/issues)
 [![License](https://img.shields.io/github/license/Arrowar/StreamingCommunity?logo=gnu&logoColor=white&labelColor=2d3748&color=e53e3e&style=for-the-badge)](https://github.com/Arrowar/StreamingCommunity/blob/main/LICENSE)
 
-## 💝 Support the Project
-<a href='https://ko-fi.com/E1E11LVC83' target='_blank'>
-    <img height='36' style='border:0px;height:36px;' src='https://storage.ko-fi.com/cdn/kofi4.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' />
-</a>
 
 ## 🚀 Download & Install
 [![Windows](https://img.shields.io/badge/🪟_Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white&labelColor=2d3748)](https://github.com/Arrowar/StreamingCommunity/releases/latest/download/StreamingCommunity_win.exe)
 [![macOS](https://img.shields.io/badge/🍎_macOS-000000?style=for-the-badge&logo=apple&logoColor=white&labelColor=2d3748)](https://github.com/Arrowar/StreamingCommunity/releases/latest/download/StreamingCommunity_mac)
 [![Linux latest](https://img.shields.io/badge/🐧_Linux_latest-FCC624?style=for-the-badge&logo=linux&logoColor=black&labelColor=2d3748)](https://github.com/Arrowar/StreamingCommunity/releases/latest/download/StreamingCommunity_linux_latest)
 [![Linux 22.04](https://img.shields.io/badge/🐧_Linux_22.04-FCC624?style=for-the-badge&logo=linux&logoColor=black&labelColor=2d3748)](https://github.com/Arrowar/StreamingCommunity/releases/latest/download/StreamingCommunity_linux_previous)
-
----
 
 *⚡ **Quick Start:** `pip install StreamingCommunity && StreamingCommunity`*
 
@@ -38,8 +32,6 @@
 - 🐳 [Deployment](#docker)
 - 🎓 [Tutorials](#tutorials)
 - 🔗 [Related Projects](#useful-project)
-
----
 
 ## Installation
 

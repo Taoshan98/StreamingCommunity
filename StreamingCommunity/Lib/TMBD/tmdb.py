@@ -1,10 +1,13 @@
 # 24.08.24
 
+import os
 import sys
 
 
 # External libraries
 from rich.console import Console
+from dotenv import load_dotenv
+load_dotenv()
 
 
 # Internal utilities
@@ -16,7 +19,9 @@ from StreamingCommunity.Util.table import TVShowManager
 # Variable
 console = Console()
 table_show_manager = TVShowManager()
-api_key = "a800ed6c93274fb857ea61bd9e7256c5"
+api_key = os.environ.get("TMDB_API_KEY")
+if not api_key:
+    raise ValueError("TMDB_API_KEY non trovata nel file .env")
 
 
 def get_select_title(table_show_manager, generic_obj):
