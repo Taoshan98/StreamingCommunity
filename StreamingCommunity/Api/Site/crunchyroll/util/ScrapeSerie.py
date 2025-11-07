@@ -1,37 +1,33 @@
 # 16.03.25
 
 import logging
+from typing import List, Dict, Tuple
 
 
 # Internal utilities
 from StreamingCommunity.Api.Player.Helper.Vixcloud.util import SeasonManager
-from StreamingCommunity.Util.http_client import create_client_curl
 from .get_license import CrunchyrollClient
 
 
-def get_series_seasons(series_id, headers, params):
-    """
-    Fetches the seasons for a given series ID from Crunchyroll.
-    """
+# Static configuration
+NORMALIZE_SEASON_NUMBERS = False        # Set to True to remap seasons to 1..N range
+
+
+def get_series_seasons(series_id, client: CrunchyrollClient, params):
+    """Fetches seasons for a series."""
     url = f'https://www.crunchyroll.com/content/v2/cms/series/{series_id}/seasons'
-    response = create_client_curl(headers=headers).get(url, params=params)
-    return response
+    return client._request_with_retry('GET', url, params=params)
 
 
-def get_season_episodes(season_id, headers, params):
-    """
-    Fetches the episodes for a given season ID from Crunchyroll.
-    """
+def get_season_episodes(season_id, client: CrunchyrollClient, params):
+    """Fetches episodes for a season."""
     url = f'https://www.crunchyroll.com/content/v2/cms/seasons/{season_id}/episodes'
-    response = create_client_curl(headers=headers).get(url, params=params)
-    return response
+    return client._request_with_retry('GET', url, params=params)
 
 
 class GetSerieInfo:
     def __init__(self, series_id):
         """
-        Initialize the GetSerieInfo class for scraping TV series information using Crunchyroll API.
-        
         Args:
             - series_id (str): The Crunchyroll series ID.
         """
@@ -51,18 +47,19 @@ class GetSerieInfo:
         }
         self.series_name = None
         self._episodes_cache = {}
+        self.normalize_seasons = NORMALIZE_SEASON_NUMBERS
 
     def collect_season(self) -> None:
         """
-        Retrieve all seasons using Crunchyroll API, but NOT episodes.
+        Retrieve all seasons.
+        If normalize_season_numbers=True: assigns 1..N and keeps cr_number.
         """
-        response = get_series_seasons(self.series_id, self.headers, self.params)
+        response = get_series_seasons(self.series_id, self.client, self.params)
 
         if response.status_code != 200:
             logging.error(f"Failed to fetch seasons for series {self.series_id}")
             return
 
-        # Get the JSON response 
         data = response.json()
         seasons = data.get("data", [])
 
@@ -70,19 +67,49 @@ class GetSerieInfo:
         if seasons:
             self.series_name = seasons[0].get("series_title") or seasons[0].get("title")
 
-        for i, season in enumerate(seasons, start=1):
-            self.seasons_manager.add_season({
-                'number': i,
-                'name': season.get("title", f"Season {i}"),
-                'id': season.get('id')
+        # Extract raw data
+        rows = []
+        for s in seasons:
+            raw_num = s.get("season_number", 0)
+            rows.append({
+                "id": s.get('id'),
+                "title": s.get("title", f"Season {raw_num}"),
+                "raw_number": int(raw_num or 0),
+                "slug": s.get("slug", ""),
             })
 
-    def _fetch_episodes_for_season(self, season_number: int):
-        """
-        Fetch and cache episodes for a specific season number.
-        """
+        # Sort by raw number then title for stability
+        rows.sort(key=lambda r: (r["raw_number"], r["title"] or ""))
+
+        if self.normalize_seasons:
+            # Normalize: assign 1..N, keep original as cr_number
+            for i, r in enumerate(rows, start=1):
+                self.seasons_manager.add_season({
+                    'number': i,
+                    'cr_number': r["raw_number"],
+                    'name': r["title"],
+                    'id': r["id"],
+                    'slug': r["slug"],
+                })
+
+        else:
+            # No normalization: use CR's number directly
+            for r in rows:
+                self.seasons_manager.add_season({
+                    'number': r["raw_number"],
+                    'name': r["title"],
+                    'id': r["id"],
+                    'slug': r["slug"],
+                })
+
+    def _fetch_episodes_for_season(self, season_number: int) -> List[Dict]:
+        """Fetch and cache episodes for a specific season number."""
         season = self.seasons_manager.get_season_by_number(season_number)
-        ep_response = get_season_episodes(season.id, self.headers, self.params)
+        if not season:
+            logging.error(f"Season {season_number} not found")
+            return []
+            
+        ep_response = get_season_episodes(season.id, self.client, self.params)
 
         if ep_response.status_code != 200:
             logging.error(f"Failed to fetch episodes for season {season.id}")
@@ -108,41 +135,81 @@ class GetSerieInfo:
         self._episodes_cache[season_number] = episode_list
         return episode_list
 
-    def _get_episode_audio_locales_and_urls(self, episode_id):
+    def _get_episode_audio_locales_and_urls(self, episode_id: str) -> Tuple[List[str], Dict[str, str]]:
         """
-        Fetch available audio locales and their URLs for a given episode ID.
+        Fetch available audio locales and their URLs for an episode.
+        1. Try 'versions' from CMS
+        2. Fallback to single audio_locale from metadata
+        3. Last resort: query playback and cleanup token
+        
         Returns: (audio_locales, urls_by_locale)
         """
         url = f'https://www.crunchyroll.com/content/v2/cms/objects/{episode_id}'
-        headers = self.headers.copy()
         params = {
             'ratings': 'true',
             'locale': 'it-IT',
         }
         
-        response = create_client_curl(headers=headers).get(url, params=params)
-
-        if response.status_code != 200:
-            logging.warning(f"Failed to fetch audio locales for episode {episode_id}")
-            return [], {}
-        
-        data = response.json()
         try:
-            versions = data["data"][0]['episode_metadata'].get("versions", [])
+            response = self.client._request_with_retry('GET', url, params=params)
+            
+            if response.status_code != 200:
+                logging.warning(f"Failed to fetch audio locales for episode {episode_id}")
+                return [], {}
+            
+            data = response.json()
+            item = (data.get("data") or [{}])[0] or {}
+            meta = item.get('episode_metadata', {}) or {}
 
+            # Strategy 1: versions array
+            versions = meta.get("versions") or item.get("versions") or []
             audio_locales = []
             urls_by_locale = {}
 
-            for v in versions:
-                locale = v.get("audio_locale")
-                guid = v.get("guid")
+            if versions:
+                for v in versions:
+                    if not isinstance(v, dict):
+                        continue
 
-                if locale and guid:
-                    audio_locales.append(locale)
-                    urls_by_locale[locale] = f"https://www.crunchyroll.com/it/watch/{guid}"
+                    locale = v.get("audio_locale")
+                    guid = v.get("guid")
+                    if locale and guid:
+                        audio_locales.append(locale)
+                        urls_by_locale[locale] = f"https://www.crunchyroll.com/watch/{guid}"
+                
+                if audio_locales:
+                    return sorted(set(audio_locales)), urls_by_locale
 
-            return audio_locales, urls_by_locale
-        
+            # Strategy 2: single audio_locale from metadata
+            base_audio = (
+                meta.get("audio_locale")
+                or item.get("audio_locale")
+                or (meta.get("audio") or {}).get("locale")
+                or (item.get("audio") or {}).get("locale")
+            )
+            
+            if base_audio:
+                return [base_audio], {base_audio: f"https://www.crunchyroll.com/watch/{episode_id}"}
+            
+            # Strategy 3: query playback as last resort
+            try:
+                from .get_license import get_playback_session
+                _url, _hdrs, _subs, token, audio_loc = get_playback_session(self.client, episode_id)
+                
+                # Cleanup token immediately
+                if token:
+                    try:
+                        self.client.delete_active_stream(episode_id, token)
+                    except Exception:
+                        pass
+                
+                if audio_loc:
+                    return [audio_loc], {audio_loc: f"https://www.crunchyroll.com/watch/{episode_id}"}
+            except Exception as e:
+                logging.warning(f"Playback fallback failed for {episode_id}: {e}")
+
+            return [], {}
+            
         except Exception as e:
             logging.error(f"Error parsing audio locales for episode {episode_id}: {e}")
             return [], {}
@@ -154,7 +221,6 @@ class GetSerieInfo:
         """
         if not self.seasons_manager.seasons:
             self.collect_season()
-            
         return len(self.seasons_manager.seasons)
     
     def getEpisodeSeasons(self, season_number: int) -> list:
@@ -181,11 +247,18 @@ class GetSerieInfo:
         episode = episodes[episode_index]
         episode_id = episode.get("url", "").split("/")[-1] if "url" in episode else None
 
-        # Update only the episode URL if available in it-IT or en-US
-        _, urls_by_locale = self._get_episode_audio_locales_and_urls(episode_id)
-        new_url = urls_by_locale.get("it-IT") or urls_by_locale.get("en-US")
+        if not episode_id:
+            return episode
 
-        if new_url:
-            episode["url"] = new_url
+        # Try to get best audio URL
+        try:
+            _, urls_by_locale = self._get_episode_audio_locales_and_urls(episode_id)
+            new_url = urls_by_locale.get("it-IT") or urls_by_locale.get("en-US")
+            
+            if new_url:
+                episode["url"] = new_url
+                
+        except Exception as e:
+            logging.warning(f"Could not update episode URL: {e}")
 
         return episode

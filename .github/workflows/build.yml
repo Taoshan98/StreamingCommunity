@@ -112,6 +112,7 @@ jobs:
             --hidden-import=qbittorrentapi --hidden-import=qbittorrent \
             --hidden-import=bs4 --hidden-import=httpx --hidden-import=rich --hidden-import=tqdm \
             --hidden-import=m3u8 --hidden-import=psutil --hidden-import=unidecode \
+            --hidden-import=python-dotenv --hidden-import=dotenv \
             --hidden-import=jsbeautifier --hidden-import=jsbeautifier.core \
             --hidden-import=jsbeautifier.javascript --hidden-import=jsbeautifier.javascript.beautifier \
             --hidden-import=jsbeautifier.unpackers --hidden-import=jsbeautifier.unpackers.packer \

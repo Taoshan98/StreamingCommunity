@@ -1,13 +1,11 @@
 # 16.03.25
 
-
 # External libraries
 from rich.console import Console
 
 
 # Internal utilities
 from StreamingCommunity.Util.config_json import config_manager
-from StreamingCommunity.Util.http_client import create_client_curl
 from StreamingCommunity.Util.table import TVShowManager
 
 
@@ -36,19 +34,16 @@ def title_search(query: str) -> int:
     media_search_manager.clear()
     table_show_manager.clear()
 
-    # Check if device_id or etp_rt is present
     config = config_manager.get_dict("SITE_LOGIN", "crunchyroll")
     if not config.get('device_id') or not config.get('etp_rt'):
         console.print("[bold red] device_id or etp_rt is missing or empty in config.json.[/bold red]")
         raise Exception("device_id or etp_rt is missing or empty in config.json.")
 
-    # Initialize Crunchyroll client
     client = CrunchyrollClient()
     if not client.start():
         console.print("[bold red] Failed to authenticate with Crunchyroll.[/bold red]")
         raise Exception("Failed to authenticate with Crunchyroll.")
 
-    # Build new Crunchyroll API search URL
     api_url = "https://www.crunchyroll.com/content/v2/discover/search"
 
     params = {
@@ -60,12 +55,10 @@ def title_search(query: str) -> int:
         "locale": "it-IT"
     }
 
-    headers = client._get_headers()
-
     console.print(f"[cyan]Search url: [yellow]{api_url}")
 
     try:
-        response = create_client_curl(headers=headers).get(api_url, params=params)
+        response = client._request_with_retry('GET', api_url, params=params)
         response.raise_for_status()
 
     except Exception as e:
@@ -88,18 +81,20 @@ def title_search(query: str) -> int:
             elif item.get("type") == "series":
                 meta = item.get("series_metadata", {})
 
+                # Heuristic: single episode series might be films
                 if meta.get("episode_count") == 1 and meta.get("season_count", 1) == 1 and meta.get("series_launch_year"):
-                    tipo = "film" if "film" in item.get("description", "").lower() or "movie" in item.get("description", "").lower() else "tv"
+                    description = item.get("description", "").lower()
+                    if "film" in description or "movie" in description:
+                        tipo = "film"
+                    else:
+                        tipo = "tv"
                 else:
                     tipo = "tv"
-
             else:
                 continue
 
             url = ""
-            if tipo == "tv":
-                url = f"https://www.crunchyroll.com/series/{item.get('id')}"
-            elif tipo == "film":
+            if tipo in ("tv", "film"):
                 url = f"https://www.crunchyroll.com/series/{item.get('id')}"
             else:
                 continue

@@ -41,7 +41,7 @@ console = Console()
 extension_output = config_manager.get("M3U8_CONVERSION", "extension")
 
 
-def download_video(index_season_selected: int, index_episode_selected: int, scrape_serie: GetSerieInfo) -> Tuple[str,bool]:
+def download_video(index_season_selected: int, index_episode_selected: int, scrape_serie: GetSerieInfo) -> Tuple[str, bool]:
     """
     Downloads a specific episode from a specified season.
 
@@ -59,7 +59,6 @@ def download_video(index_season_selected: int, index_episode_selected: int, scra
 
     # Get episode information
     obj_episode = scrape_serie.selectEpisode(index_season_selected, index_episode_selected-1)
-
     console.print(f"\n[bold yellow]Download:[/bold yellow] [red]{site_constant.SITE_NAME}[/red] → [cyan]{scrape_serie.series_name}[/cyan] \\ [bold magenta]{obj_episode.get('name')}[/bold magenta] ([cyan]S{index_season_selected}E{index_episode_selected}[/cyan]) \n")
 
     # Define filename and path for the downloaded video
@@ -68,8 +67,9 @@ def download_video(index_season_selected: int, index_episode_selected: int, scra
 
     # Generate mpd and license URLs
     url_id = obj_episode.get('url').split('/')[-1]
-    
-    mpd_url, mpd_headers, mpd_list_sub = get_playback_session(client, url_id)
+
+    # Get playback session with token for cleanup
+    mpd_url, mpd_headers, mpd_list_sub, token, audio_locale = get_playback_session(client, url_id)
     parsed_url = urlparse(mpd_url)
     query_params = parse_qs(parsed_url.query)
 
@@ -101,9 +101,11 @@ def download_video(index_season_selected: int, index_episode_selected: int, scra
         except Exception: 
             pass
 
-    # Delete episode stream
-    token = query_params['playbackGuid'][0]
-    client.delete_active_stream(url_id, token)
+    # Delete episode stream to avoid TOO_MANY_ACTIVE_STREAMS
+    playback_token = token or query_params.get('playbackGuid', [None])[0]
+    if playback_token:
+        client.delete_active_stream(url_id, playback_token)
+        console.print("[dim]✓ Playback session closed[/dim]")
 
     return status['path'], status['stopped']
 

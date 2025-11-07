@@ -54,11 +54,13 @@ def download_film(select_title: MediaItem) -> str:
 
     # Generate mpd and license URLs
     url_id = select_title.get('url').split('/')[-1]
-    mpd_url, mpd_headers, mpd_list_sub = get_playback_session(client, url_id)
+    mpd_url, mpd_headers, mpd_list_sub, token, audio_locale = get_playback_session(client, url_id)
+    
+    # Parse playback token from mpd_url
     parsed_url = urlparse(mpd_url)
     query_params = parse_qs(parsed_url.query)
 
-    # Download the episode
+    # Download the film
     dash_process = DASH_Downloader(
         license_url='https://www.crunchyroll.com/license/v1/license/widevine',
         mpd_url=mpd_url,
@@ -86,9 +88,10 @@ def download_film(select_title: MediaItem) -> str:
         except Exception: 
             pass
 
-    # Delete stream after download
-    token = query_params['playbackGuid'][0]
-    if token:
-        client.delete_active_stream(url_id, token)
+    # Delete stream after download to avoid TOO_MANY_ACTIVE_STREAMS
+    playback_token = token or query_params.get('playbackGuid', [None])[0]
+    if playback_token:
+        client.delete_active_stream(url_id, playback_token)
+        console.print("[dim]✓ Playback session closed[/dim]")
 
     return status['path'], status['stopped']
