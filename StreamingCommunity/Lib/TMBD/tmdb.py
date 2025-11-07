@@ -7,7 +7,6 @@ import sys
 # External libraries
 from rich.console import Console
 from dotenv import load_dotenv
-load_dotenv()
 
 
 # Internal utilities
@@ -17,9 +16,11 @@ from StreamingCommunity.Util.table import TVShowManager
 
 
 # Variable
+load_dotenv()
 console = Console()
 table_show_manager = TVShowManager()
 api_key = os.environ.get("TMDB_API_KEY")
+
 if not api_key:
     raise ValueError("TMDB_API_KEY non trovata nel file .env")
 
