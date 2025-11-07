@@ -40,14 +40,14 @@ console = Console()
 extension_output = config_manager.get("M3U8_CONVERSION", "extension")
 
 
-def download_video(index_season_selected: int, index_episode_selected: int, scape_info_serie: GetSerieInfo) -> Tuple[str,bool]:
+def download_video(index_season_selected: int, index_episode_selected: int, scrape_serie: GetSerieInfo) -> Tuple[str,bool]:
     """
     Downloads a specific episode from a specified season.
 
     Parameters:
         - index_season_selected (int): Season number
         - index_episode_selected (int): Episode index
-        - scape_info_serie (GetSerieInfo): Scraper object with series information
+        - scrape_serie (GetSerieInfo): Scraper object with series information
 
     Returns:
         - str: Path to downloaded file
@@ -56,13 +56,13 @@ def download_video(index_season_selected: int, index_episode_selected: int, scap
     start_message()
 
     # Get episode information
-    obj_episode = scape_info_serie.selectEpisode(index_season_selected, index_episode_selected-1)
-    index_season_selected = dynamic_format_number(str(index_season_selected))
-    console.print(f"\n[bold yellow]Download:[/bold yellow] [red]{site_constant.SITE_NAME}[/red] → [cyan]{scape_info_serie.tv_name}[/cyan] \\ [bold magenta]{obj_episode.get('name')}[/bold magenta] ([cyan]S{index_season_selected}E{index_episode_selected}[/cyan]) \n")
+    obj_episode = scrape_serie.selectEpisode(index_season_selected, index_episode_selected-1)
+    index_season_selected_formatted = dynamic_format_number(str(index_season_selected))
+    console.print(f"\n[bold yellow]Download:[/bold yellow] [red]{site_constant.SITE_NAME}[/red] → [cyan]{scrape_serie.tv_name}[/cyan] \\ [bold magenta]{obj_episode.get('name')}[/bold magenta] ([cyan]S{index_season_selected_formatted}E{index_episode_selected}[/cyan]) \n")
 
     # Define filename and path for the downloaded video
-    mp4_name = f"{map_episode_title(scape_info_serie.tv_name, index_season_selected, index_episode_selected, obj_episode.get('name'))}.{extension_output}"
-    mp4_path = os.path.join(site_constant.SERIES_FOLDER, scape_info_serie.tv_name, f"S{index_season_selected}")
+    mp4_name = f"{map_episode_title(scrape_serie.tv_name, index_season_selected_formatted, index_episode_selected, obj_episode.get('name'))}.{extension_output}"
+    mp4_path = os.path.join(site_constant.SERIES_FOLDER, scrape_serie.tv_name, f"S{index_season_selected_formatted}")
 
     # Setup video source
     video_source = VideoSource(obj_episode.get('url'))
@@ -85,18 +85,18 @@ def download_video(index_season_selected: int, index_episode_selected: int, scap
     return hls_process['path'], hls_process['stopped']
 
 
-def download_episode(scape_info_serie: GetSerieInfo, index_season_selected: int, download_all: bool = False, episode_selection: str = None) -> None:
+def download_episode(index_season_selected: int, scrape_serie: GetSerieInfo, download_all: bool = False, episode_selection: str = None) -> None:
     """
     Handle downloading episodes for a specific season.
 
     Parameters:
-        - scape_info_serie (GetSerieInfo): Scraper object with series information
         - index_season_selected (int): Season number
+        - scrape_serie (GetSerieInfo): Scraper object with series information
         - download_all (bool): Whether to download all episodes
         - episode_selection (str, optional): Pre-defined episode selection that bypasses manual input
     """
-    # Get episodes for the selected season
-    episodes = scape_info_serie.get_episode_number(index_season_selected)
+    # Get episodes for the selected season using the new method
+    episodes = scrape_serie.getEpisodeSeasons(index_season_selected)
     episodes_count = len(episodes)
 
     if episodes_count == 0:
@@ -104,10 +104,9 @@ def download_episode(scape_info_serie: GetSerieInfo, index_season_selected: int,
         return
 
     if download_all:
-        
         # Download all episodes in the season
         for i_episode in range(1, episodes_count + 1):
-            path, stopped = download_video(index_season_selected, i_episode, scape_info_serie)
+            path, stopped = download_video(index_season_selected, i_episode, scrape_serie)
 
             if stopped:
                 break
@@ -115,10 +114,9 @@ def download_episode(scape_info_serie: GetSerieInfo, index_season_selected: int,
         console.print(f"\n[red]End downloaded [yellow]season: [red]{index_season_selected}.")
 
     else:
-
         # Display episodes list and manage user selection
         if episode_selection is None:
-            last_command = display_episodes_list(scape_info_serie.list_episodes)
+            last_command = display_episodes_list(episodes)
         else:
             last_command = episode_selection
             console.print(f"\n[cyan]Using provided episode selection: [yellow]{episode_selection}")
@@ -129,7 +127,7 @@ def download_episode(scape_info_serie: GetSerieInfo, index_season_selected: int,
 
         # Download selected episodes
         for i_episode in list_episode_select:
-            path, stopped = download_video(index_season_selected, i_episode, scape_info_serie)
+            path, stopped = download_video(index_season_selected, i_episode, scrape_serie)
 
             if stopped:
                 break
@@ -148,7 +146,9 @@ def download_series(dict_serie: MediaItem, season_selection: str = None, episode
 
     # Create class
     scrape_serie = GetSerieInfo(dict_serie)
-    seasons_count = scrape_serie.get_seasons_number()
+    
+    # Get number of seasons
+    seasons_count = scrape_serie.getNumberSeason()
 
     # If season_selection is provided, use it instead of asking for input
     if season_selection is None:
@@ -163,7 +163,19 @@ def download_series(dict_serie: MediaItem, season_selection: str = None, episode
 
     # Loop through the selected seasons and download episodes
     for i_season in list_season_select:
-        if len(list_season_select) > 1 or index_season_selected == "*":
-            download_episode(scrape_serie, i_season, download_all=True)
-        else:
-            download_episode(scrape_serie, i_season, download_all=False, episode_selection=episode_selection)
+        try:
+            season = scrape_serie.seasons_manager.get_season_by_number(i_season)
+            if not season:
+                console.print(f"[red]Season {i_season} not found! Available seasons: {[s.number for s in scrape_serie.seasons_manager.seasons]}")
+                continue
+            
+            season_number = season.number
+
+            if len(list_season_select) > 1 or index_season_selected == "*":
+                download_episode(season_number, scrape_serie, download_all=True)
+            else:
+                download_episode(season_number, scrape_serie, download_all=False, episode_selection=episode_selection)
+                
+        except Exception as e:
+            console.print(f"[red]Error processing season {i_season}: {str(e)}")
+            continue

@@ -11,11 +11,11 @@ from bs4 import BeautifulSoup
 # Internal utilities
 from StreamingCommunity.Util.headers import get_userAgent
 from StreamingCommunity.Util.http_client import create_client
+from StreamingCommunity.Api.Player.Helper.Vixcloud.util import SeasonManager
 
 
 # Logic class
 from StreamingCommunity.Api.Template.Class.SearchType import MediaItem
-
 
 
 class GetSerieInfo:
@@ -24,16 +24,16 @@ class GetSerieInfo:
         Initializes the GetSerieInfo object with default values.
 
         Parameters:
-            dict_serie (MediaItem): Dictionary containing series information (optional).
+            dict_serie (MediaItem): Dictionary containing series information.
         """
         self.headers = {'user-agent': get_userAgent()}
         self.url = dict_serie.url
         self.tv_name = None
-        self.list_episodes = None
+        self.seasons_manager = SeasonManager()
 
     def get_seasons_number(self) -> int:
         """
-        Retrieves the number of seasons of a TV series.
+        Retrieves the number of seasons of a TV series and populates the seasons_manager.
 
         Returns:
             int: Number of seasons of the TV series. Returns -1 if parsing fails.
@@ -45,12 +45,22 @@ class GetSerieInfo:
             # Find the seasons container
             soup = BeautifulSoup(response.text, "html.parser")
             table_content = soup.find('div', class_="tt_season")
-            seasons_number = len(table_content.find_all("li"))
+            season_elements = table_content.find_all("li")
             
             # Try to get the title, with fallback
             self.tv_name = soup.find('h1', class_="front_title").get_text(strip=True) if soup.find('h1', class_="front_title") else "Unknown Series"
 
-            return seasons_number
+            # Clear existing seasons and add new ones to SeasonManager
+            self.seasons_manager.seasons = []
+            for idx, season_element in enumerate(season_elements, start=1):
+                self.seasons_manager.add_season({
+                    'id': idx,
+                    'number': idx,
+                    'name': f"Season {idx}",
+                    'slug': f"season-{idx}",
+                })
+
+            return len(season_elements)
 
         except Exception as e:
             logging.error(f"Error parsing HTML page: {str(e)}")
@@ -58,7 +68,7 @@ class GetSerieInfo:
 
     def get_episode_number(self, n_season: int) -> List[Dict[str, str]]:
         """
-        Retrieves the number of episodes for a specific season.
+        Retrieves the episodes for a specific season.
 
         Parameters:
             n_season (int): The season number.
@@ -78,6 +88,12 @@ class GetSerieInfo:
             episode_content = table_content.find_all("li")
             list_dict_episode = []
 
+            # Get the season from seasons_manager
+            season = self.seasons_manager.get_season_by_number(n_season)
+            
+            if season:
+                season.episodes.episodes = []
+
             for episode_div in episode_content:
                 index = episode_div.find("a").get("data-num")
                 link = episode_div.find("a").get("data-link")
@@ -86,12 +102,16 @@ class GetSerieInfo:
                 obj_episode = {
                     'number': index,
                     'name': name,
-                    'url': link
+                    'url': link,
+                    'id': index
                 }
                 
                 list_dict_episode.append(obj_episode)
+                
+                # Add episode to the season in seasons_manager
+                if season:
+                    season.episodes.add(obj_episode)
 
-            self.list_episodes = list_dict_episode
             return list_dict_episode
         
         except Exception as e:
@@ -99,20 +119,30 @@ class GetSerieInfo:
 
         return []
 
-
     # ------------- FOR GUI -------------
     def getNumberSeason(self) -> int:
         """
         Get the total number of seasons available for the series.
         """
-        return self.get_seasons_number()
+        if not self.seasons_manager.seasons:
+            return self.get_seasons_number()
+        return len(self.seasons_manager.seasons)
     
     def getEpisodeSeasons(self, season_number: int) -> list:
         """
         Get all episodes for a specific season.
         """
-        episodes = self.get_episode_number(season_number)
-        return episodes
+        season = self.seasons_manager.get_season_by_number(season_number)
+        
+        if not season:
+            logging.error(f"Season {season_number} not found")
+            return []
+        
+        # If episodes are not loaded yet, fetch them
+        if not season.episodes.episodes:
+            self.get_episode_number(season_number)
+        
+        return season.episodes.episodes
         
     def selectEpisode(self, season_number: int, episode_index: int) -> dict:
         """
