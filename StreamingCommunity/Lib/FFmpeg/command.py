@@ -86,7 +86,7 @@ def join_video(video_path: str, out_path: str, codec: M3U8_Codec = None):
     return out_path
 
 
-def join_audios(video_path: str, audio_tracks: List[Dict[str, str]], out_path: str, codec: M3U8_Codec = None, limit_duration_diff: float = 2.0):
+def join_audios(video_path: str, audio_tracks: List[Dict[str, str]], out_path: str, codec: M3U8_Codec = None, limit_duration_diff: float = 10.0):
     """
     Joins audio tracks with a video file using FFmpeg.
     
