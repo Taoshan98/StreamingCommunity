@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 # Internal utilities
 from .obj_tmbd import Json_film
 from StreamingCommunity.Util.http_client import create_client
+from StreamingCommunity.Util.config_json import config_manager
 from StreamingCommunity.Util.table import TVShowManager
 
 
@@ -19,9 +20,10 @@ from StreamingCommunity.Util.table import TVShowManager
 load_dotenv()
 console = Console()
 table_show_manager = TVShowManager()
+show_trending = config_manager.get_bool('DEFAULT', 'show_trending')
 api_key = os.environ.get("TMDB_API_KEY")
 
-if not api_key:
+if not api_key and show_trending:
     raise ValueError("TMDB_API_KEY non trovata nel file .env")
 
 
