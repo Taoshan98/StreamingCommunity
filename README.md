@@ -5,8 +5,8 @@
 [![Issues](https://img.shields.io/github/issues/Arrowar/StreamingCommunity?logo=github&logoColor=white&labelColor=2d3748&color=ed8936&style=for-the-badge)](https://github.com/Arrowar/StreamingCommunity/issues)
 [![License](https://img.shields.io/github/license/Arrowar/StreamingCommunity?logo=gnu&logoColor=white&labelColor=2d3748&color=e53e3e&style=for-the-badge)](https://github.com/Arrowar/StreamingCommunity/blob/main/LICENSE)
 
+---
 
-## 🚀 Download & Install
 [![Windows](https://img.shields.io/badge/🪟_Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white&labelColor=2d3748)](https://github.com/Arrowar/StreamingCommunity/releases/latest/download/StreamingCommunity_win.exe)
 [![macOS](https://img.shields.io/badge/🍎_macOS-000000?style=for-the-badge&logo=apple&logoColor=white&labelColor=2d3748)](https://github.com/Arrowar/StreamingCommunity/releases/latest/download/StreamingCommunity_mac)
 [![Linux latest](https://img.shields.io/badge/🐧_Linux_latest-FCC624?style=for-the-badge&logo=linux&logoColor=black&labelColor=2d3748)](https://github.com/Arrowar/StreamingCommunity/releases/latest/download/StreamingCommunity_linux_latest)
@@ -124,7 +124,6 @@ from StreamingCommunity import TOR_downloader
 client = TOR_downloader()
 
 client.add_magnet_link("magnet:?xt=urn:btih:example_hash&dn=example_name", save_path=".")
-
 client.start_download()
 ```
 
@@ -639,7 +638,6 @@ Start the bot inside a screen session and press Ctrl + A, followed by D, to deta
 - [Windows](https://www.youtube.com/watch?v=mZGqK4wdN-k)
 - [Linux](https://www.youtube.com/watch?v=0qUNXPE_mTg)
 - [Pypy](https://www.youtube.com/watch?v=C6m9ZKOK0p4)
-- [Compiled](https://www.youtube.com/watch?v=pm4lqsxkTVo)
 
 
 # Useful Project
