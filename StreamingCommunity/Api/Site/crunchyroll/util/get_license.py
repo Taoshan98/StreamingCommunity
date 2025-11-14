@@ -20,6 +20,11 @@ DEFAULT_BASE_BACKOFF_MS = 300   # Base backoff time in milliseconds
 DEFAULT_SLOWDOWN_AFTER = 50     # Number of requests before introducing slowdown
 
 
+class PlaybackError(Exception):
+    """Custom exception for playback-related errors that shouldn't crash the program"""
+    pass
+
+
 class RateLimiter:
     """Simple token-bucket rate limiter to avoid server-side throttling."""
     def __init__(self, qps: float):
@@ -209,8 +214,10 @@ class CrunchyrollClient:
             
             return response
 
-    def get_streams(self, media_id: str) -> Dict:
-        """Get available streams for media_id."""
+    def get_streams(self, media_id: str) -> Optional[Dict]:
+        """
+        Get available streams for media_id.
+        """
         response = self._request_with_retry(
             'GET',
             f'{BASE_URL}/playback/v3/{media_id}/web/chrome/play',
@@ -218,17 +225,19 @@ class CrunchyrollClient:
         )
 
         if response.status_code == 403:
-            raise Exception("Playback Rejected: Subscription does not have access to this content")
+            logging.warning(f"Access denied for media {media_id}: Subscription required")
+            return None
         
         if response.status_code == 420:
-            raise Exception("TOO_MANY_ACTIVE_STREAMS. Wait a few minutes and try again.")
+            raise PlaybackError("TOO_MANY_ACTIVE_STREAMS. Wait a few minutes and try again.")
         
         response.raise_for_status()
         
         data = response.json()
         
         if data.get('error') == 'Playback is Rejected':
-            raise Exception("Playback Rejected: Premium required")
+            logging.warning(f"Playback rejected for media {media_id}: Premium required")
+            return None
         
         return data
 
@@ -270,18 +279,19 @@ def _find_token_anywhere(obj) -> Optional[str]:
     return None
 
 
-def get_playback_session(client: CrunchyrollClient, url_id: str) -> Tuple[str, Dict, List[Dict], Optional[str], Optional[str]]:
+def get_playback_session(client: CrunchyrollClient, url_id: str) -> Optional[Tuple[str, Dict, List[Dict], Optional[str], Optional[str]]]:
     """
     Return the playback session details.
     
     Returns:
-        - mpd_url: str
-        - headers: Dict
-        - subtitles: List[Dict] with metadata (kind, closed_caption, etc.)
-        - token: Optional[str] for cleanup
-        - audio_locale: Optional[str] current audio language
+        Tuple with (mpd_url, headers, subtitles, token, audio_locale) or None if access denied
     """
     data = client.get_streams(url_id)
+    
+    # If get_streams returns None, it means access was denied (403)
+    if data is None:
+        return None
+    
     url = data.get('url')
     audio_locale_current = data.get('audio_locale') or data.get('audio', {}).get('locale')
     
