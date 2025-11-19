@@ -278,6 +278,23 @@ def force_exit():
     print("Uscita forzata con os._exit(0)")
     os._exit(0)
 
+def check_env_file():
+    required_keys = ['TMDB_API_KEY']
+
+    env_path = os.path.join(os.getcwd(), '.env')
+    if not os.path.isfile(env_path):
+        console.print("\n[red]Please create a .env file in the current directory with the necessary configurations.")
+
+        for key in required_keys:
+            while True:
+                value = console.input(f"[cyan]Please enter the value for [bold]{key}[/bold]: [/cyan]").strip()
+
+                with open(env_path, 'a') as f:
+                    f.write(f"{key}={value}\n")
+                console.print(f"[green]{key} added to .env file.[/green]")
+                break
+
+        console.print("\n[green].env file created successfully. Please restart the application.[/green]")
 
 def check_dns():
     """Check DNS configuration and exit if required."""
@@ -472,6 +489,7 @@ def main(script_id=0):
         get_bot_instance().send_message(f"Avviato script {script_id}", None)
 
     Logger()
+    check_env_file()
     execute_hooks('pre_run')
     initialize()
 

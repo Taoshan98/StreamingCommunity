@@ -25,8 +25,6 @@ api_key = os.environ.get("TMDB_API_KEY")
 
 if not api_key and show_trending:
     show_trending = False
-    print("TMDB_API_KEY non trovata nel file .env")
-    #raise ValueError("TMDB_API_KEY non trovata nel file .env")
 
 
 def get_select_title(table_show_manager, generic_obj):
@@ -305,7 +303,6 @@ class TheMovieDB:
 
         choice = int(input("Enter the number of the episode you want: ")) - 1
         return data[choice]
-
 
 
 # Output
