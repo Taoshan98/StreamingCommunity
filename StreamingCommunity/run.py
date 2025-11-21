@@ -9,7 +9,6 @@ import importlib
 import threading
 import asyncio
 import subprocess
-from urllib.parse import urlparse
 from typing import Callable, Tuple
 
 
@@ -23,15 +22,13 @@ from .global_search import global_search
 from StreamingCommunity.Api.Template.loader import load_search_functions
 from StreamingCommunity.Util.message import start_message
 from StreamingCommunity.Util.config_json import config_manager
-from StreamingCommunity.Util.os import internet_manager, os_manager
+from StreamingCommunity.Util.os import os_manager
 from StreamingCommunity.Util.logger import Logger
-from StreamingCommunity.Lib.TMBD import tmdb
 from StreamingCommunity.Upload.update import update as git_update
 from StreamingCommunity.TelegramHelp.telegram_bot import get_bot_instance, TelegramSession
 
 
 # Config
-SHOW_TRENDING = config_manager.get_bool('DEFAULT', 'show_trending')
 TELEGRAM_BOT = config_manager.get_bool('DEFAULT', 'telegram_bot')
 BYPASS_DNS = config_manager.get_bool('DEFAULT', 'bypass_dns')
 COLOR_MAP = {
@@ -70,12 +67,6 @@ def initialize():
         console.log("[red]Install python version > 3.7.16")
         sys.exit(0)
 
-    # Show trending content
-    if SHOW_TRENDING:
-        print()
-        tmdb.display_trending_films()
-        tmdb.display_trending_tv_shows()
-    
     # Attempt GitHub update
     try:
         git_update()
@@ -279,57 +270,8 @@ def force_exit():
     os._exit(0)
 
 
-def check_env_file():
-    required_keys = ['TMDB_API_KEY']
-
-    env_path = os.path.join(os.getcwd(), '.env')
-    if not os.path.isfile(env_path):
-        console.print("\n[red]Please create a .env file in the current directory with the necessary configurations.")
-
-        for key in required_keys:
-            console.print(f"\n[yellow]To get your {key}:[/yellow]")
-            console.print(f"[cyan]1. Go to: https://www.themoviedb.org/settings/api/request")
-            console.print(f"[cyan]2. Register or log in to your account")
-            console.print(f"[cyan]3. Create an API request and copy your API key\n[/cyan]")
-            
-            while True:
-                value = console.input(f"[cyan]Please enter the value for [bold]{key}[/bold]: [/cyan]").strip()
-                
-                if value:
-                    with open(env_path, 'a') as f:
-                        f.write(f"{key}={value}\n")
-                    console.print(f"[green]{key} added to .env file.[/green]")
-                    break
-                else:
-                    console.print(f"[red]Error: {key} cannot be empty. Please try again.[/red]")
-
-        console.print("\n[green].env file created successfully. Please restart the application.[/green]")
-
-
-def check_dns():
-    """Check DNS configuration and exit if required."""
-    if BYPASS_DNS:
-        return
-        
-    hostname_list = [
-        urlparse(site_info.get('full_url')).hostname 
-        for site_info in config_manager.configSite.values() 
-        if urlparse(site_info.get('full_url')).hostname
-    ]
-    
-    if not internet_manager.check_dns_resolve(hostname_list):
-        console.print("[red]\nERROR: DNS configuration is required!")
-        console.print("[red]The program cannot function correctly without proper DNS settings.")
-        console.print("\n[yellow]Please configure one of these DNS servers:")
-        console.print("[red]• Cloudflare (1.1.1.1) 'https://developers.cloudflare.com/1.1.1.1/setup/windows/'")
-        console.print("[red]• Quad9 (9.9.9.9) 'https://docs.quad9.net/Setup_Guides/Windows/Windows_10/'")
-        console.print("\n[yellow]-> The program will not work until you configure your DNS settings.")
-        sys.exit(0)
-
-
 def setup_argument_parser(search_functions):
     """Setup and return configured argument parser."""
-    # Build help text
     module_info = {}
     for alias, (_func, _use_for) in search_functions.items():
         module_name = alias.split("_")[0].lower()
@@ -499,12 +441,10 @@ def main(script_id=0):
         get_bot_instance().send_message(f"Avviato script {script_id}", None)
 
     Logger()
-    check_env_file()
     execute_hooks('pre_run')
     initialize()
 
     try:
-        check_dns()
         search_functions = load_search_functions()
 
         parser = setup_argument_parser(search_functions)

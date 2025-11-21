@@ -2,10 +2,8 @@
     "DEFAULT": {
         "debug": false,
         "show_message": true,
-        "show_trending": true,
         "fetch_domain_online": true,
-        "telegram_bot": false,
-        "bypass_dns": false
+        "telegram_bot": false
     },
     "OUT_FOLDER": {
         "root_path": "Video",

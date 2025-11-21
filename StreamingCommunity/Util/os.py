@@ -3,7 +3,6 @@
 import os
 import shutil
 import logging
-import socket
 import platform
 import inspect
 
@@ -285,28 +284,6 @@ class InternetManager():
             return f"{bytes / 1024:.2f} KB/s"
         else:
             return f"{bytes / (1024 * 1024):.2f} MB/s"
-
-    def check_dns_resolve(self, domains_list: list = None):
-        """
-        Check if the system's current DNS server can resolve a domain name.
-        Works on both Windows and Unix-like systems.
-        
-        Args:
-            domains_list (list, optional): List of domains to test. Defaults to common domains.
-
-        Returns:
-            bool: True if the current DNS server can resolve a domain name,
-                    False if can't resolve or in case of errors
-        """
-        test_domains = domains_list or ["github.com", "google.com", "microsoft.com", "amazon.com"]
-        
-        try:
-            for domain in test_domains:
-                # socket.gethostbyname() works consistently across all platforms
-                socket.gethostbyname(domain)
-            return True
-        except (socket.gaierror, socket.error):
-            return False
 
 
 class OsSummary:
