@@ -109,4 +109,4 @@ def update():
         [yellow]{get_execution_mode()} - [green]Current installed version: [yellow]{current_version} [green]last commit: [white]'[yellow]{latest_commit_message.splitlines()[0]}[white]'\n\
         [cyan]Help the repository grow today by leaving a [yellow]star [cyan]and [yellow]sharing [cyan]it with others online!")
     
-    time.sleep(0.8)
+    time.sleep(1)

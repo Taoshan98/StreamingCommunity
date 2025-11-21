@@ -30,7 +30,6 @@ from StreamingCommunity.TelegramHelp.telegram_bot import get_bot_instance, Teleg
 
 # Config
 TELEGRAM_BOT = config_manager.get_bool('DEFAULT', 'telegram_bot')
-BYPASS_DNS = config_manager.get_bool('DEFAULT', 'bypass_dns')
 COLOR_MAP = {
     "anime": "red",
     "film_&_serie": "yellow", 
