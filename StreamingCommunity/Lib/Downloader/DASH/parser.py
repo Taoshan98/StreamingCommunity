@@ -138,7 +138,7 @@ class SegmentTimelineParser:
     def __init__(self, namespace: Dict[str, str]):
         self.ns = namespace
 
-    def parse(self, seg_timeline_element) -> Tuple[List[int], List[int]]:
+    def parse(self, seg_timeline_element, start_number: int = 1) -> Tuple[List[int], List[int]]:
         """
         Parse SegmentTimeline and return (number_list, time_list)
         """
@@ -148,8 +148,8 @@ class SegmentTimelineParser:
         if seg_timeline_element is None:
             return number_list, time_list
 
-        current_time = None
-        start_number = 1  # Default start number
+        current_time = 0
+        current_number = start_number
         
         for s_element in seg_timeline_element.findall('mpd:S', self.ns):
             d = s_element.get('d')
@@ -157,19 +157,23 @@ class SegmentTimelineParser:
                 continue
                 
             d = int(d)
-            r = int(s_element.get('r', 0))
-
-            # Handle 't' attribute
+            
+            # Handle 't' attribute (explicit time)
             if s_element.get('t') is not None:
                 current_time = int(s_element.get('t'))
-            elif current_time is None:
-                current_time = 0
-
-            # Append (r+1) times and numbers
+            
+            # Get repeat count (default 0 means 1 segment)
+            r = int(s_element.get('r', 0))
+            
+            # Special case: r=-1 means repeat until end of Period
+            if r == -1:
+                r = 0
+            
+            # Add (r+1) segments
             for i in range(r + 1):
-                number_list.append(start_number)
+                number_list.append(current_number)
                 time_list.append(current_time)
-                start_number += 1
+                current_number += 1
                 current_time += d
                 
         return number_list, time_list
@@ -183,6 +187,21 @@ class RepresentationParser:
         self.ns = namespace
         self.timeline_parser = SegmentTimelineParser(namespace)
 
+    def _resolve_adaptation_base_url(self, adapt_set, initial_base: str) -> str:
+        """Resolve base URL at AdaptationSet level"""
+        base = initial_base
+        
+        # Check for BaseURL at AdaptationSet level
+        adapt_base = adapt_set.find('mpd:BaseURL', self.ns)
+        if adapt_base is not None and adapt_base.text:
+            base_text = adapt_base.text.strip()
+            if base_text.startswith('http'):
+                base = base_text
+            else:
+                base = urljoin(base, base_text)
+        
+        return base
+
     def parse_adaptation_set(self, adapt_set, base_url: str) -> List[Dict[str, Any]]:
         """
         Parse all representations in an adaptation set
@@ -193,9 +212,16 @@ class RepresentationParser:
         
         # Find SegmentTemplate at AdaptationSet level
         adapt_seg_template = adapt_set.find('mpd:SegmentTemplate', self.ns)
+        
+        # Risolvi il BaseURL a livello di AdaptationSet
+        adapt_base_url = self._resolve_adaptation_base_url(adapt_set, base_url)
 
         for rep_element in adapt_set.findall('mpd:Representation', self.ns):
-            representation = self._parse_representation(rep_element, adapt_set, adapt_seg_template, base_url, mime_type, lang)
+            representation = self._parse_representation(
+                rep_element, adapt_set, adapt_seg_template, 
+                adapt_base_url,
+                mime_type, lang
+            )
             if representation:
                 representations.append(representation)
                 
@@ -257,28 +283,14 @@ class RepresentationParser:
         }
 
     def _resolve_base_url(self, rep_element, adapt_set, initial_base: str) -> str:
-        """Resolve base URL by concatenating MPD -> Period/AdaptationSet -> Representation BaseURLs"""
+        """Resolve base URL at Representation level (AdaptationSet already resolved)"""
         base = initial_base
-
-        # Adaptation-level BaseURL
-        if adapt_set is not None:
-            adapt_base = adapt_set.find('mpd:BaseURL', self.ns)
-            if adapt_base is not None and adapt_base.text:
-                base_text = adapt_base.text.strip()
-
-                # Handle BaseURL that might already be absolute
-                if base_text.startswith('http'):
-                    base = base_text
-                else:
-                    base = urljoin(base, base_text)
-
-        # Representation-level BaseURL
+        
+        # Representation-level BaseURL only
         if rep_element is not None:
             rep_base = rep_element.find('mpd:BaseURL', self.ns)
             if rep_base is not None and rep_base.text:
                 base_text = rep_base.text.strip()
-
-                # Handle BaseURL that might already be absolute
                 if base_text.startswith('http'):
                     base = base_text
                 else:
@@ -301,10 +313,12 @@ class RepresentationParser:
 
         # Parse segment timeline
         seg_timeline = seg_tmpl.find('mpd:SegmentTimeline', self.ns)
-        number_list, time_list = self.timeline_parser.parse(seg_timeline)
+        number_list, time_list = self.timeline_parser.parse(seg_timeline, start_number)
         
-        if not number_list:
+        # Fallback solo se non c'è SegmentTimeline
+        if not number_list and not time_list:
             number_list = list(range(start_number, start_number + 100))
+            time_list = []
 
         # Build media URLs
         media_urls = self._build_media_urls(media, base_url, rep_id, bandwidth, number_list, time_list)
@@ -341,6 +355,32 @@ class RepresentationParser:
 
 
 class MPDParser:
+    @staticmethod
+    def _is_ad_period(period_id: str, base_url: str) -> bool:
+        """
+        Detect if a Period is an advertisement or bumper.
+        Returns True if it's an ad, False if it's main content.
+        """
+        ad_indicators = [
+            '_ad/',           # Generic ad marker in URL
+            'ad_bumper',      # Ad bumper
+            '/creative/',     # Ad creative folder
+            '_OandO/',        # Pluto TV bumpers
+        ]
+        
+        # Check BaseURL for ad indicators
+        for indicator in ad_indicators:
+            if indicator in base_url:
+                return True
+        
+        # Check Period ID for patterns
+        if period_id:
+            if '_subclip_' in period_id:
+                return False
+            # Short periods (< 60s) are usually ads/bumpers
+        
+        return False
+    
     @staticmethod
     def _deduplicate_videos(representations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -449,23 +489,11 @@ class MPDParser:
 
     def _fetch_and_parse_mpd(self, custom_headers: Dict[str, str]) -> None:
         """Fetch MPD content and parse XML"""
-        for attempt in range(max_retry + 1):
-            try:
-                response = requests.get(
-                    self.mpd_url, headers=custom_headers, timeout=max_timeout, 
-                    allow_redirects=True, impersonate="chrome124"
-                )
-                
-                response.raise_for_status()
-                logging.info(f"Successfully fetched MPD: {response.content}")
-                self.root = ET.fromstring(response.content)
-                break
-
-            except Exception as e:
-                if attempt == max_retry:
-                    raise e
-
-                console.print(f"[bold yellow]Retrying manifest request ... ({attempt + 1}/{max_retry})[/bold yellow]")
+        response = requests.get(self.mpd_url, headers=custom_headers, timeout=max_timeout, impersonate="chrome124")
+        response.raise_for_status()
+        
+        logging.info(f"Successfully fetched MPD: {response.content}")
+        self.root = ET.fromstring(response.content)
 
     def _extract_namespace(self) -> None:
         """Extract and register namespaces from the root element"""
@@ -475,21 +503,81 @@ class MPDParser:
             self.ns['cenc'] = 'urn:mpeg:cenc:2013'
 
     def _extract_pssh(self) -> None:
-        """Extract PSSH from ContentProtection elements"""
+        """Extract Widevine PSSH from ContentProtection elements"""
+        # Try to find Widevine PSSH first (preferred)
+        for protection in self.root.findall('.//mpd:ContentProtection', self.ns):
+            scheme_id = protection.get('schemeIdUri', '')
+            
+            # Check if this is Widevine ContentProtection
+            if 'edef8ba9-79d6-4ace-a3c8-27dcd51d21ed' in scheme_id:
+                pssh_element = protection.find('cenc:pssh', self.ns)
+                if pssh_element is not None and pssh_element.text:
+                    self.pssh = pssh_element.text.strip()
+                    return
+        
+        # Fallback: try any PSSH (for compatibility with other services)
         for protection in self.root.findall('.//mpd:ContentProtection', self.ns):
             pssh_element = protection.find('cenc:pssh', self.ns)
             if pssh_element is not None and pssh_element.text:
-                self.pssh = pssh_element.text
-                break
+                self.pssh = pssh_element.text.strip()
+                print(f"Found PSSH (fallback): {self.pssh}")
+                return
+
+    def _get_period_base_url(self, period, initial_base: str) -> str:
+        """Get base URL at Period level"""
+        base = initial_base
+        
+        period_base = period.find('mpd:BaseURL', self.ns)
+        if period_base is not None and period_base.text:
+            base_text = period_base.text.strip()
+            if base_text.startswith('http'):
+                base = base_text
+            else:
+                base = urljoin(base, base_text)
+        
+        return base
 
     def _parse_representations(self) -> None:
-        """Parse all representations from the MPD"""
+        """Parse all representations from the MPD, filtering out ads and aggregating main content"""
         base_url = self._get_initial_base_url()
         representation_parser = RepresentationParser(self.mpd_url, self.ns)
+        
+        # Dictionary to aggregate representations by ID
+        rep_aggregator = {}
+        periods = self.root.findall('.//mpd:Period', self.ns)
 
-        for adapt_set in self.root.findall('.//mpd:AdaptationSet', self.ns):
-            representations = representation_parser.parse_adaptation_set(adapt_set, base_url)
-            self.representations.extend(representations)
+        for period_idx, period in enumerate(periods):
+            period_id = period.get('id', f'period_{period_idx}')
+            period_base_url = self._get_period_base_url(period, base_url)
+            
+            # CHECK IF THIS IS AN AD PERIOD
+            is_ad = self._is_ad_period(period_id, period_base_url)
+            
+            # Skip ad periods
+            if is_ad:
+                continue
+            
+            for adapt_set in period.findall('mpd:AdaptationSet', self.ns):
+                representations = representation_parser.parse_adaptation_set(adapt_set, period_base_url)
+                
+                for rep in representations:
+                    rep_id = rep['id']
+                    
+                    if rep_id not in rep_aggregator:
+                        rep_aggregator[rep_id] = rep
+                        #print(f"      ✨ New Rep {rep_id} ({rep['type']}): {len(rep['segment_urls'])} segments")
+                    else:
+                        existing = rep_aggregator[rep_id]
+                        
+                        # Concatenate segment URLs
+                        if rep['segment_urls']:
+                            existing['segment_urls'].extend(rep['segment_urls'])
+                        # Update init_url only if it wasn't set before
+                        if not existing['init_url'] and rep['init_url']:
+                            existing['init_url'] = rep['init_url']
+        
+        # Convert aggregated dict back to list
+        self.representations = list(rep_aggregator.values())
 
     def _deduplicate_representations(self) -> None:
         """Remove duplicate video and audio representations"""
