@@ -150,9 +150,25 @@ def load_search_functions() -> Dict[str, LazySearchModule]:
         except Exception as e:
             console.print(f"[yellow]Warning: Could not read metadata from {module_name}: {str(e)}")
     
-    # Sort by index and create lazy loaders
-    for module_name, indice in sorted(modules_metadata, key=lambda x: x[1]):
-        loaded_functions[f'{module_name}_search'] = LazySearchModule(module_name, indice)
-    
+    # Sort by index and create lazy loaders with consecutive indices
+    sorted_modules = sorted(modules_metadata, key=lambda x: x[1])
+    for new_indice, (module_name, _) in enumerate(sorted_modules):
+        loaded_functions[f'{module_name}_search'] = LazySearchModule(module_name, new_indice)
+
+        # Update indice in __init__.py for each module
+        init_file = os.path.join(api_dir, module_name, '__init__.py')
+        try:
+            with open(init_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            with open(init_file, 'w', encoding='utf-8') as f:
+                for line in lines:
+                    if line.strip().startswith('indice =') or line.strip().startswith('indice='):
+                        f.write(f'indice = {new_indice}\n')
+                    else:
+                        f.write(line)
+                        
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not update indice in {module_name}: {str(e)}")
+
     logging.info(f"Loaded {len(loaded_functions)} search modules")
     return loaded_functions

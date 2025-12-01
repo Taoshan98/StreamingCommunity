@@ -23,7 +23,7 @@ from .series import download_series
 
 
 # Variable
-indice = 8
+indice = 7
 _useFor = "Anime"
 _priority = 0
 _engineDownload = "dash"

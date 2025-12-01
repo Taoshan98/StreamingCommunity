@@ -1,9 +1,9 @@
 {
   "cb01new": {
-    "domain": "blog",
-    "full_url": "https://cb01net.blog/",
-    "old_domain": "cfd",
-    "time_change": "2025-11-24 16:24:47"
+    "domain": "cyou",
+    "full_url": "https://cb01net.cyou/",
+    "old_domain": "blog",
+    "time_change": "2025-12-02 07:23:05"
   },
   "animeunity": {
     "domain": "so",
@@ -18,33 +18,21 @@
     "time_change": "2025-03-21 12:20:27"
   },
   "guardaserie": {
-    "domain": "cfd",
-    "full_url": "https://guardaserietv.cfd/",
-    "old_domain": "wtf",
-    "time_change": "2025-11-25 07:21:03"
-  },
-  "streamingwatch": {
-    "domain": "org",
-    "full_url": "https://www.streamingwatch.org/",
-    "old_domain": "org",
-    "time_change": "2025-04-29 12:30:30"
+    "domain": "club",
+    "full_url": "https://guardaserietv.club/",
+    "old_domain": "cfd",
+    "time_change": "2025-12-02 07:23:06"
   },
   "altadefinizione": {
-    "domain": "lol",
-    "full_url": "https://altadefinizionegratis.lol/",
-    "old_domain": "shop",
-    "time_change": "2025-11-25 07:21:04"
+    "domain": "casa",
+    "full_url": "https://altadefinizionegratis.casa/",
+    "old_domain": "watch",
+    "time_change": "2025-12-02 07:23:06"
   },
   "streamingcommunity": {
-    "domain": "ltd",
-    "full_url": "https://streamingcommunityz.ltd/",
-    "old_domain": "lat",
-    "time_change": "2025-11-28 07:21:14"
-  },
-  "altadefinizionegratis": {
-    "domain": "lol",
-    "full_url": "https://altadefinizionegratis.lol/",
-    "old_domain": "shop",
-    "time_change": "2025-11-25 07:21:06"
+    "domain": "icu",
+    "full_url": "https://streamingcommunityz.icu/",
+    "old_domain": "ltd",
+    "time_change": "2025-12-01 19:22:46"
   }
 }
