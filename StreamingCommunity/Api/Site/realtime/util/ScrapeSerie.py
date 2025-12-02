@@ -118,6 +118,7 @@ class GetSerieInfo:
                     'description': episode.get('description', ''),
                     'duration': duration_minutes,
                     'poster': episode.get('poster', {}).get('src', ''),
+                    'channel': "X-REALM-IT" if episode.get('channel') is None else "X-REALM-DPLAY"
                 }
                 
                 # Add episode to the season's episode manager

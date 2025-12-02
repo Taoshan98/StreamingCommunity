@@ -64,7 +64,7 @@ def download_video(index_season_selected: int, index_episode_selected: int, scra
 
     # Get m3u8 playlist
     bearer_token = get_bearer_token()
-    master_playlist = get_playback_url(obj_episode.id, bearer_token)
+    master_playlist = get_playback_url(obj_episode.id, bearer_token, False, obj_episode.channel)
 
     # Download the episode
     hls_process = HLS_Downloader(

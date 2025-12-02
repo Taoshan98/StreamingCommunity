@@ -7,7 +7,7 @@ from StreamingCommunity.Util.http_client import create_client
 
 
 
-def get_playback_url(video_id: str, bearer_token: str, get_dash=False) -> str:
+def get_playback_url(video_id: str, bearer_token: str, get_dash: bool, channel: str = "") -> str:
     """
     Get the playback URL (HLS or DASH) for a given video ID.
 
@@ -15,15 +15,19 @@ def get_playback_url(video_id: str, bearer_token: str, get_dash=False) -> str:
         - video_id (str): ID of the video.
     """
     headers = {
-        'authorization': f'Bearer {bearer_token}',
+        'authorization': f'Bearer {bearer_token[channel]['key']}',
         'user-agent': get_userAgent()
     }
 
     json_data = {
+        'deviceInfo': {
+            "adBlocker": False,
+            "drmSupported": True
+        },
         'videoId': video_id,
     }
 
-    response = create_client().post('https://public.aurora.enhanced.live/playback/v3/videoPlaybackInfo', headers=headers, json=json_data)
+    response = create_client().post(bearer_token[channel]['endpoint'], headers=headers, json=json_data)
 
     if not get_dash:
         return response.json()['data']['attributes']['streaming'][0]['url']
@@ -39,6 +43,13 @@ def get_bearer_token():
         str: Token Bearer
     """
     response = create_client(headers=get_headers()).get('https://public.aurora.enhanced.live/site/page/homepage/?include=default&filter[environment]=realtime&v=2')
-
-    # response.json()['userMeta']['realm']['X-REALM-DPLAY']
-    return response.json()['userMeta']['realm']['X-REALM-IT']
+    return {
+        'X-REALM-IT': {
+            'endpoint': 'https://public.aurora.enhanced.live/playback/v3/videoPlaybackInfo',
+            'key': response.json()['userMeta']['realm']['X-REALM-IT']
+        }, 
+        'X-REALM-DPLAY': {
+            'endpoint': 'https://eu1-prod.disco-api.com/playback/v3/videoPlaybackInfo',
+            'key': response.json()['userMeta']['realm']['X-REALM-DPLAY']
+        }
+    }
