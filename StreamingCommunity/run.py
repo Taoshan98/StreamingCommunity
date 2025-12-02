@@ -420,19 +420,21 @@ def get_user_site_selection(args, choice_labels):
     else:
         # Show all sites
         legend_text = " | ".join([f"[{color}]{cat.capitalize()}[/{color}]" for cat, color in COLOR_MAP.items()])
+        legend_text += " | [magenta]Global[/magenta]"
         console.print(f"\n[bold cyan]Category Legend:[/bold cyan] {legend_text}")
         
         if TELEGRAM_BOT:
-            category_legend = "Categorie: \n" + " | ".join([cat.capitalize() for cat in COLOR_MAP.keys()])
+            category_legend = "Categorie: \n" + " | ".join([cat.capitalize() for cat in COLOR_MAP.keys()]) + " | Global"
             prompt_message = "Inserisci il sito:\n" + "\n".join([f"{key}: {label[0]}" for key, label in choice_labels.items()])
             console.print(f"\n{prompt_message}")
             return bot.ask("select_provider", f"{category_legend}\n\n{prompt_message}", None)
         else:
+            choice_keys = list(choice_labels.keys()) + ["global"]
             prompt_message = "[cyan]Insert site: " + ", ".join([
                 f"[{COLOR_MAP.get(label[1], 'white')}]({key}) {label[0]}[/{COLOR_MAP.get(label[1], 'white')}]" 
                 for key, label in choice_labels.items()
-            ])
-            return msg.ask(prompt_message, choices=list(choice_labels.keys()), default="0", show_choices=False, show_default=False)
+            ]) + ", [magenta](global) Global[/magenta]"
+            return msg.ask(prompt_message, choices=choice_keys, default="0", show_choices=False, show_default=False)
 
 
 def main(script_id=0):
@@ -461,6 +463,10 @@ def main(script_id=0):
             return
 
         category = get_user_site_selection(args, choice_labels)
+
+        if category == "global":
+            global_search(args.search)
+            return
 
         if category in input_to_function:
             run_function(input_to_function[category], search_terms=args.search)
