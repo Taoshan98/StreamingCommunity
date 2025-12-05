@@ -5,7 +5,7 @@ import logging
 
 
 # External libraries
-import httpx
+from curl_cffi import requests
 from rich.console import Console
 from pywidevine.cdm import Cdm
 from pywidevine.device import Device
@@ -29,12 +29,8 @@ def get_widevine_keys(pssh, license_url, cdm_device_path, headers=None, payload=
     Returns:
         list: List of dicts {'kid': ..., 'key': ...} (only CONTENT keys) or None if error.
     """
-
-    # Check if PSSH is a valid base64 string
-    try:
-        base64.b64decode(pssh)
-    except Exception:
-        console.print("[bold red] Invalid PSSH base64 string.[/bold red]")
+    if not cdm_device_path:
+        console.print("[bold red]Invalid CDM device path.[/bold red]")
         return None
 
     try:
@@ -42,23 +38,18 @@ def get_widevine_keys(pssh, license_url, cdm_device_path, headers=None, payload=
         cdm = Cdm.from_device(device)
         session_id = cdm.open()
 
-        # Display security level in a more readable format
-        security_levels = {1: "L1 (Hardware)", 2: "L2 (Software)", 3: "L3 (Software)"}
-        security_level_str = security_levels.get(device.security_level, 'Unknown')
-        logging.info(f"Security Level: {security_level_str}")
-
-        # Only allow L3, otherwise warn and exit
-        if device.security_level != 3:
-            console.print(f"[bold yellow]⚠️ Only L3 (Software) security level is supported. Current: {security_level_str}[/bold yellow]")
-            return None
-
         try:
             challenge = cdm.get_license_challenge(session_id, PSSH(pssh))
             req_headers = headers or {}
             req_headers['Content-Type'] = 'application/octet-stream'
 
-            # Send license request
-            response = httpx.post(license_url, data=challenge, headers=req_headers, content=payload)
+            # Send license request using curl_cffi
+            try:
+                # response = httpx.post(license_url, data=challenge, headers=req_headers, content=payload)
+                response = requests.post(license_url, data=challenge, headers=req_headers, json=payload, impersonate="chrome124")
+            except Exception as e:
+                console.print(f"[bold red]Request error:[/bold red] {e}")
+                return None
 
             if response.status_code != 200:
                 console.print(f"[bold red]License error:[/bold red] {response.status_code}, {response.text}")
@@ -108,6 +99,7 @@ def get_widevine_keys(pssh, license_url, cdm_device_path, headers=None, payload=
             content_keys = []
             for key in cdm.get_keys(session_id):
                 if key.type == "CONTENT":
+                    
                     kid = key.kid.hex() if isinstance(key.kid, bytes) else str(key.kid)
                     key_val = key.key.hex() if isinstance(key.key, bytes) else str(key.key)
 

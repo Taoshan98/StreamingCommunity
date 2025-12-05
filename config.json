@@ -2,54 +2,52 @@
     "DEFAULT": {
         "debug": false,
         "show_message": true,
-        "show_trending": true,
         "fetch_domain_online": true,
-        "validate_github_config": true,
-        "telegram_bot": false,
-        "bypass_dns": false
+        "telegram_bot": false
     },
     "OUT_FOLDER": {
         "root_path": "Video",
         "movie_folder_name": "Movie",
         "serie_folder_name": "Serie",
         "anime_folder_name": "Anime",
-        "map_episode_name": "E%(episode)_%(episode_name)",
+        "map_episode_name": "%(episode_name) S%(season)E%(episode)",
         "add_siteName": false
     },
     "QBIT_CONFIG": {
-        "host": "192.168.1.51",
-        "port": "6666",
-        "user": "admin",
-        "pass": "adminadmin"
+        "host": "192.168.1.1",
+        "port": "5555",
+        "user": "root",
+        "pass": "toor"
     },
     "M3U8_DOWNLOAD": {
-        "default_video_workers": 12,
-        "default_audio_workers": 12,
-        "segment_timeout": 8,
+        "default_video_workers": 8,
+        "default_audio_workers": 8,
+        "segment_timeout": 6,
+        "enable_retry": true,
         "specific_list_audio": [
             "ita"
         ],
-        "download_subtitle": true,
         "merge_subs": true,
         "specific_list_subtitles": [
             "ita",
             "eng"
         ],
+        "limit_segment": 0,
         "cleanup_tmp_folder": true,
         "get_only_link": false
     },
     "M3U8_CONVERSION": {
-        "use_codec": false,
-        "use_vcodec": true,
-        "use_acodec": true,
-        "use_bitrate": true,
         "use_gpu": false,
-        "default_preset": "ultrafast",
-        "force_resolution": "Best"
+        "param_video": ["-c:v", "libx265", "-crf", "28", "-preset", "medium"],
+        "param_audio": ["-c:a", "libopus", "-b:a", "128k"],
+        "param_subtitles": ["-c:s", "webvtt"],
+        "param_final": ["-c", "copy"],
+        "force_resolution": "Best",
+        "extension": "mkv"
     },
     "REQUESTS": {
         "verify": false,
-        "timeout": 20,
+        "timeout": 12,
         "max_retry": 8
     },
     "HOOKS": {
@@ -58,13 +56,8 @@
     },
     "SITE_LOGIN": {
         "crunchyroll": {
-            "etp_rt": "",
-            "x_cr_tab_id": ""
-        },
-        "mediasetinfinity": {
-            "beToken": "",
-            "username": "",
-            "password": ""
+            "device_id": "",
+            "etp_rt": ""
         }
     }
 }

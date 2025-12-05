@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional, Union
 
 # External library
 import httpx
+from curl_cffi import requests
 
 
 # Logic class
@@ -71,15 +72,31 @@ def create_client(
     follow_redirects: bool = True,
 ) -> httpx.Client:
     """Factory for a configured httpx.Client."""
-    return httpx.Client(
-        headers=_default_headers(headers),
-        cookies=cookies,
-        timeout=timeout if timeout is not None else _get_timeout(),
-        verify=_get_verify() if verify is None else verify,
-        follow_redirects=follow_redirects,
-        http2=http2,
-        proxy=proxies if proxies is not None else _get_proxies(),
-    )
+    proxy_value = proxies if proxies is not None else _get_proxies()
+    
+    # Try with 'proxy' first (older httpx versions)
+    try:
+        return httpx.Client(
+            headers=_default_headers(headers),
+            cookies=cookies,
+            timeout=timeout if timeout is not None else _get_timeout(),
+            verify=_get_verify() if verify is None else verify,
+            follow_redirects=follow_redirects,
+            http2=http2,
+            proxy=proxy_value,
+        )
+    
+    except TypeError:
+        # Fall back to 'proxies' (newer httpx versions >= 0.24.0)
+        return httpx.Client(
+            headers=_default_headers(headers),
+            cookies=cookies,
+            timeout=timeout if timeout is not None else _get_timeout(),
+            verify=_get_verify() if verify is None else verify,
+            follow_redirects=follow_redirects,
+            http2=http2,
+            proxies=proxy_value,
+        )
 
 
 def create_async_client(
@@ -93,15 +110,58 @@ def create_async_client(
     follow_redirects: bool = True,
 ) -> httpx.AsyncClient:
     """Factory for a configured httpx.AsyncClient."""
-    return httpx.AsyncClient(
-        headers=_default_headers(headers),
-        cookies=cookies,
-        timeout=timeout if timeout is not None else _get_timeout(),
-        verify=_get_verify() if verify is None else verify,
-        follow_redirects=follow_redirects,
-        http2=http2,
-        proxies=proxies if proxies is not None else _get_proxies(),
-    )
+    proxy_value = proxies if proxies is not None else _get_proxies()
+    
+    # Try with 'proxy' first (older httpx versions)
+    try:
+        return httpx.AsyncClient(
+            headers=_default_headers(headers),
+            cookies=cookies,
+            timeout=timeout if timeout is not None else _get_timeout(),
+            verify=_get_verify() if verify is None else verify,
+            follow_redirects=follow_redirects,
+            http2=http2,
+            proxy=proxy_value,
+        )
+    
+    except TypeError:
+        # Fall back to 'proxies' (newer httpx versions >= 0.24.0)
+        return httpx.AsyncClient(
+            headers=_default_headers(headers),
+            cookies=cookies,
+            timeout=timeout if timeout is not None else _get_timeout(),
+            verify=_get_verify() if verify is None else verify,
+            follow_redirects=follow_redirects,
+            http2=http2,
+            proxies=proxy_value,
+        )
+
+
+def create_client_curl(
+    *,
+    headers: Optional[Dict[str, str]] = None,
+    cookies: Optional[Dict[str, str]] = None,
+    timeout: Optional[Union[int, float]] = None,
+    verify: Optional[bool] = None,
+    proxies: Optional[Dict[str, str]] = None,
+    impersonate: str = "chrome136",
+    allow_redirects: bool = True,
+):
+    """Factory for a configured curl_cffi session."""
+    session = requests.Session()
+    session.headers.update(_default_headers(headers))
+    if cookies:
+        session.cookies.update(cookies)
+    session.timeout = timeout if timeout is not None else _get_timeout()
+    session.verify = _get_verify() if verify is None else verify
+    if proxies is not None:
+        session.proxies = proxies
+    elif _get_proxies():
+        session.proxies = _get_proxies()
+    session.impersonate = impersonate
+    session.allow_redirects = allow_redirects
+    
+    return session
 
 
 def _sleep_with_backoff(attempt: int, base: float = 1.1, cap: float = 10.0) -> None:

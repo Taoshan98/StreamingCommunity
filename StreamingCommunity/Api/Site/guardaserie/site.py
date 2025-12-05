@@ -1,13 +1,14 @@
 # 09.06.24
 
+
 # External libraries
-import httpx
 from bs4 import BeautifulSoup
 from rich.console import Console
 
+
 # Internal utilities
-from StreamingCommunity.Util.config_json import config_manager
 from StreamingCommunity.Util.headers import get_userAgent
+from StreamingCommunity.Util.http_client import create_client
 from StreamingCommunity.Util.table import TVShowManager
 
 
@@ -20,8 +21,6 @@ from StreamingCommunity.Api.Template.Class.SearchType import MediaManager
 console = Console()
 media_search_manager = MediaManager()
 table_show_manager = TVShowManager()
-max_timeout = config_manager.get_int("REQUESTS", "timeout")
-
 
 
 def title_search(query: str) -> int:
@@ -41,15 +40,8 @@ def title_search(query: str) -> int:
     console.print(f"[cyan]Search url: [yellow]{search_url}")
 
     try:
-        response = httpx.get(
-            search_url, 
-            headers={'user-agent': get_userAgent()}, 
-            timeout=max_timeout, 
-            follow_redirects=True, 
-            verify=False
-        )
+        response = create_client(headers={'user-agent': get_userAgent()}).get(search_url)
         response.raise_for_status()
-    
     except Exception as e:
         console.print(f"[red]Site: {site_constant.SITE_NAME}, request search error: {e}")
         return 0
@@ -59,17 +51,12 @@ def title_search(query: str) -> int:
 
     for serie_div in soup.find_all('div', class_='entry'):
         try:
-            
-            title = serie_div.find('a').get("title")
-            link = serie_div.find('a').get("href")
-
             serie_info = {
-                'name': title.replace("streaming guardaserie", ""),
-                'url': link,
+                'name': serie_div.find('a').get("title").replace("streaming guardaserie", ""),
+                'url': serie_div.find('a').get("href"),
                 'type': 'tv',
                 'image': f"{site_constant.FULL_URL}/{serie_div.find('img').get('src')}",
             }
-
             media_search_manager.add_media(serie_info)
 
         except Exception as e:

@@ -1,52 +1,21 @@
 # 21.05.24
 
 # External libraries
-import httpx
 from rich.console import Console
 
 
 # Internal utilities
-from StreamingCommunity.Util.config_json import config_manager
-from StreamingCommunity.Util.headers import get_userAgent
+from StreamingCommunity.Util.headers import get_headers
+from StreamingCommunity.Util.http_client import create_client
 from StreamingCommunity.Util.table import TVShowManager
 from StreamingCommunity.Api.Template.config_loader import site_constant
 from StreamingCommunity.Api.Template.Class.SearchType import MediaManager
-
-
-# Logic Import
-from .util.ScrapeSerie import GetSerieInfo
 
 
 # Variable
 console = Console()
 media_search_manager = MediaManager()
 table_show_manager = TVShowManager()
-max_timeout = config_manager.get_int("REQUESTS", "timeout")
-
-
-def determine_media_type(item):
-    """
-    Determine if the item is a film or TV series by checking actual seasons count
-    using GetSerieInfo.
-    """
-    try:
-        # Extract program name from path_id
-        program_name = None
-        if item.get('path_id'):
-            parts = item['path_id'].strip('/').split('/')
-            if len(parts) >= 2:
-                program_name = parts[-1].split('.')[0]
-
-        if not program_name:
-            return "film"
-
-        scraper = GetSerieInfo(program_name)
-        scraper.collect_info_title()
-        return "tv" if scraper.getNumberSeason() > 0 else "film"
-    
-    except Exception as e:
-        console.print(f"[red]Error determining media type: {e}[/red]")
-        return "film"
 
 
 def title_search(query: str) -> int:
@@ -77,32 +46,56 @@ def title_search(query: str) -> int:
     }
 
     try:
-        response = httpx.post(
-            search_url, 
-            headers={'user-agent': get_userAgent()}, 
-            json=json_data, 
-            timeout=max_timeout, 
-            follow_redirects=True
-        )
+        response = create_client(headers=get_headers()).post(search_url, json=json_data)
         response.raise_for_status()
 
     except Exception as e:
         console.print(f"[red]Site: {site_constant.SITE_NAME}, request search error: {e}")
         return 0
 
-    # Limit to only 15 results for performance
-    data = response.json().get('agg').get('titoli').get('cards')
-    data = data[:15] if len(data) > 15 else data
+    try:
+        response_data = response.json()
+        cards = response_data.get('agg', {}).get('titoli', {}).get('cards', [])
+        
+        # Limit to only 15 results for performance
+        data = cards[:15]
+        console.print(f"[cyan]Found {len(cards)} results, processing first {len(data)}...[/cyan]")
+        
+    except Exception as e:
+        console.print(f"[red]Error parsing search results: {e}[/red]")
+        return 0
     
     # Process each item and add to media manager
-    for item in data:
-        media_search_manager.add_media({
-            'id': item.get('id', ''),
-            'name': item.get('titolo', ''),
-            'type': determine_media_type(item),
-            'path_id': item.get('path_id', ''),
-            'url': f"https://www.raiplay.it{item.get('url', '')}",
-            'image': f"https://www.raiplay.it{item.get('immagine', '')}",
-        })
-          
+    for idx, item in enumerate(data, 1):
+        try:
+            # Get path_id
+            path_id = item.get('path_id', '')
+            if not path_id:
+                console.print("[yellow]Skipping item due to missing path_id[/yellow]")
+                continue
+
+            # Get image URL - handle both relative and absolute URLs
+            image = item.get('immagine', '')
+            if image and not image.startswith('http'):
+                image = f"https://www.raiplay.it{image}"
+            
+            # Get URL - handle both relative and absolute URLs
+            url = item.get('url', '')
+            if url and not url.startswith('http'):
+                url = f"https://www.raiplay.it{url}"
+
+            media_search_manager.add_media({
+                'id': item.get('id', ''),
+                'name': item.get('titolo', 'Unknown'),
+                'type': "tv",
+                'path_id': path_id,
+                'url': url,
+                'image': image,
+                'year': image.split("/")[5]
+            })
+    
+        except Exception as e:
+            console.print(f"[red]Error processing item '{item.get('titolo', 'Unknown')}': {e}[/red]")
+            continue
+    
     return media_search_manager.get_length()

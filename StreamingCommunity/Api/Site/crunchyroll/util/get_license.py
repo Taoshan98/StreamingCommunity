@@ -1,227 +1,321 @@
 # 28.07.25
 
-import uuid
-from dataclasses import dataclass, field
-from typing import Optional,  Dict, Any
-
-
-# External library
-from curl_cffi.requests import Session
+import time
+import logging
+from typing import Tuple, List, Dict, Optional
 
 
 # Internal utilities
 from StreamingCommunity.Util.config_json import config_manager
-from StreamingCommunity.Util.headers import get_userAgent, get_headers
+from StreamingCommunity.Util.http_client import create_client_curl
+from StreamingCommunity.Util.headers import get_userAgent
 
 
 # Variable
-device_id = None
-auth_basic = 'bm9haWhkZXZtXzZpeWcwYThsMHE6'
-etp_rt = config_manager.get_dict("SITE_LOGIN", "crunchyroll")['etp_rt']
-x_cr_tab_id = config_manager.get_dict("SITE_LOGIN", "crunchyroll")['x_cr_tab_id']
+PUBLIC_TOKEN = "bm9haWhkZXZtXzZpeWcwYThsMHE6"
+BASE_URL = "https://www.crunchyroll.com"
+DEFAULT_QPS = 3.0               # Queries per second to avoid rate limiting
+DEFAULT_MAX_RETRIES = 3         # Maximum retry attempts for failed requests
+DEFAULT_BASE_BACKOFF_MS = 300   # Base backoff time in milliseconds
+DEFAULT_SLOWDOWN_AFTER = 50     # Number of requests before introducing slowdown
 
 
-@dataclass
-class Token:
-    access_token: Optional[str] = None
-    refresh_token: Optional[str] = None
-    expires_in: Optional[int] = None
-    token_type: Optional[str] = None
-    scope: Optional[str] = None
-    country: Optional[str] = None
-    account_id: Optional[str] = None
-    profile_id: Optional[str] = None
-    extra: Dict[str, Any] = field(default_factory=dict)
+class PlaybackError(Exception):
+    """Custom exception for playback-related errors that shouldn't crash the program"""
+    pass
 
 
-@dataclass
-class Account:
-    account_id: Optional[str] = None
-    external_id: Optional[str] = None
-    email: Optional[str] = None
-    extra: Dict[str, Any] = field(default_factory=dict)
+class RateLimiter:
+    """Simple token-bucket rate limiter to avoid server-side throttling."""
+    def __init__(self, qps: float):
+        self.qps = max(0.1, float(qps))
+        self._last = 0.0
+
+    def wait(self):
+        if self.qps <= 0:
+            return
+        now = time.time()
+        min_dt = 1.0 / self.qps
+        dt = now - self._last
+        if dt < min_dt:
+            time.sleep(min_dt - dt)
+        self._last = time.time()
 
 
-@dataclass
-class Profile:
-    profile_id: Optional[str] = None
-    email: Optional[str] = None
-    profile_name: Optional[str] = None
-    extra: Dict[str, Any] = field(default_factory=dict)
+class CrunchyrollClient:
+    def __init__(self) -> None:
+        config = config_manager.get_dict("SITE_LOGIN", "crunchyroll")
+        self.device_id = config.get('device_id')
+        self.etp_rt = config.get('etp_rt')
+        self.locale = "it-IT"
+        
+        self.access_token: Optional[str] = None
+        self.refresh_token: Optional[str] = None
+        self.account_id: Optional[str] = None
+        self.expires_at: float = 0.0                # epoch timestamp
+        
+        # Rate limiting configuration
+        self.rate_limiter = RateLimiter(qps=DEFAULT_QPS)
+        self._req_count = 0
+        
+        # Retry configuration
+        self.max_retries = DEFAULT_MAX_RETRIES
+        self.base_backoff_ms = DEFAULT_BASE_BACKOFF_MS
+        self.slowdown_after = DEFAULT_SLOWDOWN_AFTER
 
-
-
-def generate_device_id():
-    global device_id
-
-    if device_id is not None:
-        return device_id
+    def _get_headers(self) -> Dict:
+        headers = {
+            'user-agent': get_userAgent(),
+            'accept': 'application/json, text/plain, */*',
+            'origin': BASE_URL,
+            'referer': f'{BASE_URL}/',
+        }
+        if self.access_token:
+            headers['authorization'] = f'Bearer {self.access_token}'
+        return headers
     
-    device_id = str(uuid.uuid4())
-    return device_id
+    def _get_cookies(self) -> Dict:
+        cookies = {'device_id': self.device_id}
+        if self.etp_rt:
+            cookies['etp_rt'] = self.etp_rt
+        return cookies
 
-
-def get_auth_token(device_id):
-    with Session(impersonate="chrome110") as session:
-        cookies = {
-            'etp_rt': etp_rt,
+    def start(self) -> bool:
+        """Authorize the client with etp_rt_cookie grant."""
+        headers = self._get_headers()
+        headers['authorization'] = f'Basic {PUBLIC_TOKEN}'
+        headers['content-type'] = 'application/x-www-form-urlencoded'
+        
+        data = {
+            'device_id': self.device_id,
+            'device_type': 'Chrome on Windows',
+            'grant_type': 'etp_rt_cookie',
         }
-        response = session.post(
-            'https://www.crunchyroll.com/auth/v1/token',
-            headers={
-                'authorization': f'Basic {auth_basic}',
-                'user-agent': get_userAgent(),
-            },
-            data={
-                'device_id': device_id,
-                'device_type': 'Chrome on Windows',
-                'grant_type': 'etp_rt_cookie',
-            },
-            cookies=cookies
-        )
-        if response.status_code == 400:
-            print("Error 400: Please enter a correct 'etp_rt' value in config.json. You can find the value in the request headers.")
 
-        # Get the JSON response
-        data = response.json()
-        known = {
-            'access_token', 'refresh_token', 'expires_in', 'token_type', 'scope',
-            'country', 'account_id', 'profile_id'
-        }
-        extra = {k: v for k, v in data.items() if k not in known}
-        return Token(
-            access_token=data.get('access_token'),
-            refresh_token=data.get('refresh_token'),
-            expires_in=data.get('expires_in'),
-            token_type=data.get('token_type'),
-            scope=data.get('scope'),
-            country=data.get('country'),
-            account_id=data.get('account_id'),
-            profile_id=data.get('profile_id'),
-            extra=extra
-        )
-
-
-def get_account(token: Token, device_id):
-    with Session(impersonate="chrome110") as session:
-        country = (token.country or "IT")
-        cookies = {
-            'device_id': device_id,
-            'c_locale': f'{country.lower()}-{country.upper()}',
-        }
-        response = session.get(
-            'https://www.crunchyroll.com/accounts/v1/me',
-            headers={
-                'authorization': f'Bearer {token.access_token}',
-                'user-agent': get_userAgent(),
-            },
-            cookies=cookies
-        )
-        response.raise_for_status()
-
-        # Get the JSON response
-        data = response.json()
-        known = {
-            'account_id', 'external_id', 'email'
-        }
-        extra = {k: v for k, v in data.items() if k not in known}
-        return Account(
-            account_id=data.get('account_id'),
-            external_id=data.get('external_id'),
-            email=data.get('email'),
-            extra=extra
-        )
-
-
-def get_profiles(token: Token, device_id):
-    with Session(impersonate="chrome110") as session:
-        country = token.country
-        cookies = {
-            'device_id': device_id,
-            'c_locale': f'{country.lower()}-{country.upper()}',
-        }
-        response = session.get(
-            'https://www.crunchyroll.com/accounts/v1/me/multiprofile',
-            headers={
-                'authorization': f'Bearer {token.access_token}',
-                'user-agent': get_userAgent(),
-            },
-            cookies=cookies
-        )
-        response.raise_for_status()
-
-        # Get the JSON response
-        data = response.json()
-        profiles = []
-        for p in data.get('profiles', []):
-            known = {
-                'profile_id', 'email', 'profile_name'
-            }
-            extra = {k: v for k, v in p.items() if k not in known}
-            profiles.append(Profile(
-                profile_id=p.get('profile_id'),
-                email=p.get('email'),
-                profile_name=p.get('profile_name'),
-                extra=extra
-            ))
-        return profiles
-
-
-def cr_login_session(device_id: str, email: str, password: str):
-    """
-    Esegue una richiesta di login a Crunchyroll SSO usando curl_cffi.requests.
-    """
-    cookies = {
-        'device_id': device_id,
-    }
-    data = (
-        f'{{"email":"{email}","password":"{password}","eventSettings":{{}}}}'
-    )
-    with Session(impersonate="chrome110") as session:
-        response = session.post(
-            'https://sso.crunchyroll.com/api/login',
-            cookies=cookies,
-            headers=get_headers(),
+        self.rate_limiter.wait()
+        response = create_client_curl(headers=headers).post(
+            f'{BASE_URL}/auth/v1/token',
+            cookies=self._get_cookies(),
             data=data
         )
+        self._req_count += 1
+        
+        if response.status_code == 400:
+            logging.error("Error 400: Invalid 'etp_rt' in config.json")
+            return False
+            
         response.raise_for_status()
-        return response
+        result = response.json()
+        
+        self.access_token = result.get('access_token')
+        self.refresh_token = result.get('refresh_token')
+        self.account_id = result.get('account_id')
+        
+        # Set expiration with 60s margin to refresh proactively
+        expires_in = int(result.get('expires_in', 3600) or 3600)
+        self.expires_at = time.time() + max(0, expires_in - 60)
+        
+        return True
 
+    def _refresh(self) -> None:
+        """Refresh access token using refresh_token."""
+        if not self.refresh_token:
+            raise RuntimeError("refresh_token missing")
+            
+        headers = self._get_headers()
+        headers['authorization'] = f'Basic {PUBLIC_TOKEN}'
+        headers['content-type'] = 'application/x-www-form-urlencoded'
+        
+        data = {
+            'grant_type': 'refresh_token',
+            'refresh_token': self.refresh_token,
+            'device_type': 'Chrome on Windows',
+        }
+        if self.device_id:
+            data['device_id'] = self.device_id
 
-def get_playback_session(token: Token, device_id: str, url_id: str):
-    """
-    Crea una sessione per ottenere i dati di playback da Crunchyroll.
-    """
-    cookies = {
-        'device_id': device_id,
-        'etp_rt': etp_rt
-    }
-    headers = {
-        'authorization': f'Bearer {token.access_token}',
-        'user-agent': get_userAgent(),
-        'x-cr-tab-id': x_cr_tab_id
-    }
+        self.rate_limiter.wait()
+        response = create_client_curl(headers=headers).post(
+            f'{BASE_URL}/auth/v1/token',
+            cookies=self._get_cookies(),
+            data=data
+        )
+        self._req_count += 1
+        response.raise_for_status()
+        
+        result = response.json()
+        self.access_token = result.get('access_token')
+        self.refresh_token = result.get('refresh_token') or self.refresh_token
+        
+        # Set expiration with 60s margin to refresh proactively
+        expires_in = int(result.get('expires_in', 3600) or 3600)
+        self.expires_at = time.time() + max(0, expires_in - 60)
 
-    with Session(impersonate="chrome110") as session:
-        response = session.get(
-            f'https://www.crunchyroll.com/playback/v3/{url_id}/web/chrome/play',
-            cookies=cookies,
-            headers=headers
+    def _ensure_token(self) -> None:
+        """Ensure access_token is valid and not expired."""
+        if not self.access_token:
+            if not self.start():
+                raise RuntimeError("Authentication failed")
+            return
+            
+        # Proactive refresh if token is expiring soon
+        if time.time() >= (self.expires_at - 30):
+            try:
+                self._refresh()
+
+            except Exception as e:
+                logging.warning(f"Refresh failed, re-authenticating: {e}")
+                if not self.start():
+                    raise RuntimeError("Re-authentication failed")
+
+    def _request_with_retry(self, method: str, url: str, **kwargs):
+        """
+        Make HTTP request with automatic retry on transient errors.
+        """
+        self._ensure_token()
+        
+        headers = kwargs.pop('headers', {}) or {}
+        merged_headers = {**self._get_headers(), **headers}
+        kwargs['headers'] = merged_headers
+        kwargs.setdefault('cookies', self._get_cookies())
+        
+        attempt = 0
+        while True:
+            self.rate_limiter.wait()
+            
+            # Introduce slowdown after many requests
+            if self._req_count >= self.slowdown_after:
+                time.sleep((self.base_backoff_ms + 200) / 1000.0)
+            
+            response = create_client_curl(headers=kwargs['headers']).request(method, url, **kwargs)
+            self._req_count += 1
+            
+            # Retry on 401 (token expired)
+            if response.status_code == 401 and attempt < self.max_retries:
+                attempt += 1
+                logging.warning(f"401 error, refreshing token (attempt {attempt}/{self.max_retries})")
+
+                try:
+                    self._refresh()
+                except Exception:
+                    self.start()
+
+                kwargs['headers'] = {**self._get_headers(), **headers}
+                time.sleep((self.base_backoff_ms * attempt) / 1000.0)
+                continue
+            
+            # Retry on transient server errors
+            if response.status_code in (502, 503, 504) and attempt < self.max_retries:
+                attempt += 1
+                backoff = (self.base_backoff_ms * attempt + 100) / 1000.0
+                logging.warning(f"{response.status_code} error, backing off {backoff}s (attempt {attempt}/{self.max_retries})")
+                time.sleep(backoff)
+                continue
+            
+            return response
+
+    def get_streams(self, media_id: str) -> Optional[Dict]:
+        """
+        Get available streams for media_id.
+        """
+        response = self._request_with_retry(
+            'GET',
+            f'{BASE_URL}/playback/v3/{media_id}/web/chrome/play',
+            params={'locale': self.locale}
         )
 
-        if (response.status_code == 403):
-            raise Exception("Playback is Rejected: The current subscription does not have access to this content")
+        if response.status_code == 403:
+            logging.warning(f"Access denied for media {media_id}: Subscription required")
+            return None
         
-        if (response.status_code == 420):
-            raise Exception("TOO_MANY_ACTIVE_STREAMS. Wait a few minutes and try again.")
-
+        if response.status_code == 420:
+            raise PlaybackError("TOO_MANY_ACTIVE_STREAMS. Wait a few minutes and try again.")
+        
         response.raise_for_status()
-
-        # Get the JSON response
+        
         data = response.json()
         
         if data.get('error') == 'Playback is Rejected':
-            raise Exception("Playback is Rejected: Premium required")
+            logging.warning(f"Playback rejected for media {media_id}: Premium required")
+            return None
         
-        url = data.get('url')
-        return url, headers
+        return data
+
+    def delete_active_stream(self, media_id: str, token: str) -> bool:
+        """Delete an active stream session (cleanup to avoid TOO_MANY_ACTIVE_STREAMS)."""
+        if not token:
+            return False
+        
+        try:
+            self.rate_limiter.wait()
+            response = create_client_curl(headers=self._get_headers()).delete(
+                f'{BASE_URL}/playback/v1/token/{media_id}/{token}',
+                cookies=self._get_cookies()
+            )
+            self._req_count += 1
+            return response.status_code in [200, 204]
+        
+        except Exception as e:
+            logging.warning(f"Failed to delete stream: {e}")
+            return False
+
+
+def _find_token_anywhere(obj) -> Optional[str]:
+    """Recursively search for 'token' field in playback response."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k.lower() == "token" and isinstance(v, str) and len(v) > 10:
+                return v
+            t = _find_token_anywhere(v)
+            if t:
+                return t
+            
+    elif isinstance(obj, list):
+        for el in obj:
+            t = _find_token_anywhere(el)
+            if t:
+                return t
+            
+    return None
+
+
+def get_playback_session(client: CrunchyrollClient, url_id: str) -> Optional[Tuple[str, Dict, List[Dict], Optional[str], Optional[str]]]:
+    """
+    Return the playback session details.
+    
+    Returns:
+        Tuple with (mpd_url, headers, subtitles, token, audio_locale) or None if access denied
+    """
+    data = client.get_streams(url_id)
+    
+    # If get_streams returns None, it means access was denied (403)
+    if data is None:
+        return None
+    
+    url = data.get('url')
+    audio_locale_current = data.get('audio_locale') or data.get('audio', {}).get('locale')
+    
+    # Collect subtitles with metadata
+    subtitles = []
+    subs_obj = data.get('subtitles') or {}
+    if isinstance(subs_obj, dict):
+        for lang, info in subs_obj.items():
+            if not info:
+                continue
+            sub_url = info.get('url')
+            if not sub_url:
+                continue
+            
+            subtitles.append({
+                'language': lang,
+                'url': sub_url,
+                'format': info.get('format'),
+                'type': info.get('type'),                           # "subtitles" | "captions"
+                'closed_caption': bool(info.get('closed_caption')),
+                'label': info.get('display') or info.get('title') or info.get('language')
+            })
+    
+    token = _find_token_anywhere(data)
+    headers = client._get_headers()
+    
+    return url, headers, subtitles, token, audio_locale_current

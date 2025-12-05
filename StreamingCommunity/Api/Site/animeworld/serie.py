@@ -47,7 +47,7 @@ def download_episode(index_select: int, scrape_serie: ScrapSerie) -> Tuple[str,b
 
     # Get episode information
     episode_data = scrape_serie.selectEpisode(1, index_select)
-    console.print(f"[bold yellow]Download:[/bold yellow] [red]{site_constant.SITE_NAME}[/red] ([cyan]E{index_select+1}[/cyan]) \n")
+    console.print(f"\n[bold yellow]Download:[/bold yellow] [red]{site_constant.SITE_NAME}[/red] → [cyan]{scrape_serie.get_name()}[/cyan] ([cyan]E{str(index_select+1)}[/cyan]) \n")
 
     # Define filename and path for the downloaded video
     mp4_name = f"{scrape_serie.get_name()}_EP_{dynamic_format_number(str(index_select+1))}.mp4"
@@ -84,7 +84,7 @@ def download_series(select_title: MediaItem, episode_selection: str = None):
     episodes = scrape_serie.get_episodes() 
 
     # Get episode count
-    console.print(f"[green]Episodes found:[/green] [red]{len(episodes)}[/red]")
+    console.print(f"\n[green]Episodes count:[/green] [red]{len(episodes)}[/red]")
 
     # Display episodes list and get user selection
     if episode_selection is None:

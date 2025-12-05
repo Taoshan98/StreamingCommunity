@@ -1,25 +1,26 @@
 # 24.08.24
 
+import os
 import sys
-from typing import Dict
 
 
 # External libraries
-import httpx
 from rich.console import Console
+from dotenv import load_dotenv
 
 
 # Internal utilities
 from .obj_tmbd import Json_film
-from StreamingCommunity.Util.config_json import config_manager
+from StreamingCommunity.Util.http_client import create_client
 from StreamingCommunity.Util.table import TVShowManager
 
 
 # Variable
+load_dotenv()
 console = Console()
 table_show_manager = TVShowManager()
-api_key = "a800ed6c93274fb857ea61bd9e7256c5"
-MAX_TIMEOUT = config_manager.get_int("REQUESTS", "timeout")
+api_key = os.environ.get("TMDB_API_KEY")
+
 
 
 def get_select_title(table_show_manager, generic_obj):
@@ -95,7 +96,6 @@ class TheMovieDB:
         """
         self.api_key = api_key
         self.base_url = "https://api.themoviedb.org/3"
-        #self.genres = self._fetch_genres()
         self._cached_trending_tv = None
         self._cached_trending_movies = None
 
@@ -115,20 +115,10 @@ class TheMovieDB:
 
         params['api_key'] = self.api_key
         url = f"{self.base_url}/{endpoint}"
-        response = httpx.get(url, params=params, timeout=MAX_TIMEOUT)
+        response = create_client().get(url, params=params)
         response.raise_for_status()
         
         return response.json()
-
-    def _fetch_genres(self) -> Dict[int, str]:
-        """
-        Fetch and return the genre names from TheMovieDB.
-
-        Returns:
-            Dict[int, str]: A dictionary mapping genre IDs to genre names.
-        """
-        genres = self._make_request("genre/movie/list")
-        return {genre['id']: genre['name'] for genre in genres.get('genres', [])}
 
     def _display_top_5(self, category: str, data, name_key='title'):
         """
@@ -301,7 +291,6 @@ class TheMovieDB:
 
         choice = int(input("Enter the number of the episode you want: ")) - 1
         return data[choice]
-
 
 
 # Output

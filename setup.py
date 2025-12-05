@@ -27,8 +27,8 @@ setup(
     version=get_version(),
     long_description=read_readme(),
     long_description_content_type="text/markdown",
-    author="Lovi-0",
-    url="https://github.com/Lovi-0/StreamingCommunity",
+    author="Arrowar",
+    url="https://github.com/Arrowar/StreamingCommunity",
     packages=find_packages(include=["StreamingCommunity", "StreamingCommunity.*"]),
     install_requires=required_packages,
     python_requires='>=3.8',
@@ -40,7 +40,7 @@ setup(
     include_package_data=True,
     keywords="streaming community",
     project_urls={
-        "Bug Reports": "https://github.com/Lovi-0/StreamingCommunity/issues",
-        "Source": "https://github.com/Lovi-0/StreamingCommunity",
+        "Bug Reports": "https://github.com/Arrowar/StreamingCommunity/issues",
+        "Source": "https://github.com/Arrowar/StreamingCommunity",
     }
 )

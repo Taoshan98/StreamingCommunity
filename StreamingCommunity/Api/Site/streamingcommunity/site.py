@@ -4,14 +4,13 @@ import json
 
 
 # External libraries
-import httpx
 from bs4 import BeautifulSoup
 from rich.console import Console
 
 
 # Internal utilities
-from StreamingCommunity.Util.config_json import config_manager
 from StreamingCommunity.Util.headers import get_userAgent
+from StreamingCommunity.Util.http_client import create_client
 from StreamingCommunity.Util.table import TVShowManager
 from StreamingCommunity.TelegramHelp.telegram_bot import get_bot_instance
 
@@ -25,8 +24,6 @@ from StreamingCommunity.Api.Template.Class.SearchType import MediaManager
 console = Console()
 media_search_manager = MediaManager()
 table_show_manager = TVShowManager()
-max_timeout = config_manager.get_int("REQUESTS", "timeout")
-ssl_verify = config_manager.get_bool("REQUESTS", "verify")
 
 
 def title_search(query: str) -> int:
@@ -46,22 +43,13 @@ def title_search(query: str) -> int:
     table_show_manager.clear()
 
     try:
-        response = httpx.get(
-            f"{site_constant.FULL_URL}/it", 
-            headers={'user-agent': get_userAgent()}, 
-            timeout=max_timeout,
-            verify=ssl_verify,
-	    follow_redirects=True
-        )
+        response = create_client(headers={'user-agent': get_userAgent()}).get(f"{site_constant.FULL_URL}/it")
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, 'html.parser')
         version = json.loads(soup.find('div', {'id': "app"}).get("data-page"))['version']
 
     except Exception as e:
-        if "WinError" in str(e) or "Errno" in str(e): 
-            console.print("\n[bold yellow]Please make sure you have enabled and configured a valid proxy.[/bold yellow]")
-            
         console.print(f"[red]Site: {site_constant.SITE_NAME} version, request error: {e}")
         return 0
 
@@ -69,17 +57,7 @@ def title_search(query: str) -> int:
     console.print(f"[cyan]Search url: [yellow]{search_url}")
 
     try:
-        response = httpx.get(
-            search_url, 
-            headers = {
-                'referer': site_constant.FULL_URL,
-                'user-agent': get_userAgent(),
-                'x-inertia': 'true',
-                'x-inertia-version': version
-            },
-            timeout=max_timeout,
-            verify=ssl_verify
-        )
+        response = create_client(headers={'user-agent': get_userAgent(), 'x-inertia': 'true', 'x-inertia-version': version}).get(search_url)
         response.raise_for_status()
 
     except Exception as e:
@@ -101,17 +79,45 @@ def title_search(query: str) -> int:
 
     for i, dict_title in enumerate(data):
         try:
+            images = dict_title.get('images') or []
+            filename = None
+            preferred_types = ['poster', 'cover', 'cover_mobile', 'background']
+            for ptype in preferred_types:
+                for img in images:
+                    if img.get('type') == ptype and img.get('filename'):
+                        filename = img.get('filename')
+                        break
+
+                if filename:
+                    break
+
+            if not filename and images:
+                filename = images[0].get('filename')
+
+            image_url = None
+            if filename:
+                image_url = f"{site_constant.FULL_URL.replace('stream', 'cdn.stream')}/images/{filename}"
+
+            # Extract date: prefer last_air_date, otherwise try translations (last_air_date or release_date)
+            date = dict_title.get('last_air_date')
+            if not date:
+                for trans in dict_title.get('translations') or []:
+                    if trans.get('key') in ('last_air_date', 'release_date') and trans.get('value'):
+                        date = trans.get('value')
+                        break
+
             media_search_manager.add_media({
                 'id': dict_title.get('id'),
                 'slug': dict_title.get('slug'),
                 'name': dict_title.get('name'),
                 'type': dict_title.get('type'),
-                'date': dict_title.get('last_air_date'),
-                'image': f"{site_constant.FULL_URL.replace('stream', 'cdn.stream')}/images/{dict_title.get('images')[0].get('filename')}"
+                'date': date,
+                'image': image_url
             })
 
             if site_constant.TELEGRAM_BOT:
-                choice_text = f"{i} - {dict_title.get('name')} ({dict_title.get('type')}) - {dict_title.get('last_air_date')}"
+                choice_date = date if date else "N/A"
+                choice_text = f"{i} - {dict_title.get('name')} ({dict_title.get('type')}) - {choice_date}"
                 choices.append(choice_text)
             
         except Exception as e:

@@ -39,6 +39,7 @@ TELEGRAM_BOT = config_manager.get_bool('DEFAULT', 'telegram_bot')
 # Variable
 msg = Prompt()
 console = Console()
+extension_output = config_manager.get("M3U8_CONVERSION", "extension")
 
 
 class InterruptHandler:
@@ -76,6 +77,7 @@ def MP4_downloader(url: str, path: str, referer: str = None, headers_: dict = No
     - Single Ctrl+C: Completes download gracefully
     - Triple Ctrl+C: Saves partial download and exits
     """
+    url = url.strip()
     if TELEGRAM_BOT:
         bot = get_bot_instance()
         console.log("####")
@@ -102,7 +104,7 @@ def MP4_downloader(url: str, path: str, referer: str = None, headers_: dict = No
     else:
         headers['User-Agent'] = get_userAgent()
 
-    # Set interrupt handler (only in main thread). In background threads (e.g., Django), skip custom signal handling.
+    # Set interrupt handler (only in main thread)
     temp_path = f"{path}.temp"
     interrupt_handler = InterruptHandler()
     original_handler = None
@@ -117,14 +119,12 @@ def MP4_downloader(url: str, path: str, referer: str = None, headers_: dict = No
                 ),
             )
     except Exception:
-        # If setting signal handler fails (non-main thread), continue without it
         original_handler = None
 
     # Ensure the output directory exists
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
     try:
-        # Use unified HTTP client (verify/timeout/proxy from config)
         with create_client() as client:
             with client.stream("GET", url, headers=headers) as response:
                 response.raise_for_status()
@@ -134,22 +134,25 @@ def MP4_downloader(url: str, path: str, referer: str = None, headers_: dict = No
                     console.print("[bold red]No video stream found.[/bold red]")
                     return None, False
 
-                # Create a fancy progress bar
+                # Create progress bar with percentage instead of n_fmt/total_fmt
+                console.print("[cyan]You can safely stop the download with [bold]Ctrl+c[bold] [cyan]")
+                
                 progress_bar = tqdm(
                     total=total,
                     ascii='░▒█',
-                    bar_format=f"{Colors.YELLOW}[MP4]{Colors.WHITE}: "
-                               f"{Colors.RED}{{percentage:.2f}}% {Colors.MAGENTA}{{bar}} {Colors.WHITE}[ "
-                               f"{Colors.YELLOW}{{n_fmt}}{Colors.WHITE} / {Colors.RED}{{total_fmt}} {Colors.WHITE}] "
-                               f"{Colors.YELLOW}{{elapsed}} {Colors.WHITE}< {Colors.CYAN}{{remaining}}{Colors.WHITE}, "
-                               f"{Colors.YELLOW}{{rate_fmt}}{{postfix}} ",
-                    unit='iB',
+                    bar_format=f"{Colors.YELLOW}MP4{Colors.CYAN} Downloading{Colors.WHITE}: "
+                               f"{Colors.MAGENTA}{{bar:40}} "
+                               f"{Colors.LIGHT_GREEN}{{n_fmt}}{Colors.WHITE}/{Colors.CYAN}{{total_fmt}}"
+                               f" {Colors.DARK_GRAY}[{Colors.YELLOW}{{elapsed}}{Colors.WHITE} < {Colors.CYAN}{{remaining}}{Colors.DARK_GRAY}]"
+                               f"{Colors.WHITE}{{postfix}} ",
+                    unit='B',
                     unit_scale=True,
-                    desc='Downloading',
+                    unit_divisor=1024,
                     mininterval=0.05,
-                    file=sys.stdout                         # Using file=sys.stdout to force in-place updates because sys.stderr may not support carriage returns in this environment.  
+                    file=sys.stdout
                 )
-
+                
+                start_time = time.time()
                 downloaded = 0
                 with open(temp_path, 'wb') as file, progress_bar as bar:
                     try:
@@ -162,6 +165,14 @@ def MP4_downloader(url: str, path: str, referer: str = None, headers_: dict = No
                                 size = file.write(chunk)
                                 downloaded += size
                                 bar.update(size)
+                                
+                                # Update postfix with speed and final size
+                                elapsed = time.time() - start_time
+                                if elapsed > 0:
+                                    speed = downloaded / elapsed
+                                    speed_str = internet_manager.format_transfer_speed(speed)
+                                    postfix_str = f"{Colors.LIGHT_MAGENTA}@ {Colors.LIGHT_CYAN}{speed_str}"
+                                    bar.set_postfix_str(postfix_str)
 
                     except KeyboardInterrupt:
                         if not interrupt_handler.force_quit:
@@ -171,16 +182,17 @@ def MP4_downloader(url: str, path: str, referer: str = None, headers_: dict = No
             os.rename(temp_path, path)
 
         if os.path.exists(path):
+            print("")
             console.print(Panel(
                 f"[bold green]Download completed{' (Partial)' if interrupt_handler.force_quit else ''}![/bold green]\n"
                 f"[cyan]File size: [bold red]{internet_manager.format_file_size(os.path.getsize(path))}[/bold red]\n"
                 f"[cyan]Duration: [bold]{print_duration_table(path, description=False, return_string=True)}[/bold]", 
-                title=f"{os.path.basename(path.replace('.mp4', ''))}", 
+                title=f"{os.path.basename(path.replace(f'.{extension_output}', ''))}", 
                 border_style="green"
             ))
 
             if TELEGRAM_BOT:
-                message = f"Download completato{'(Parziale)' if interrupt_handler.force_quit else ''}\nDimensione: {internet_manager.format_file_size(os.path.getsize(path))}\nDurata: {print_duration_table(path, description=False, return_string=True)}\nTitolo: {os.path.basename(path.replace('.mp4', ''))}"
+                message = f"Download completato{'(Parziale)' if interrupt_handler.force_quit else ''}\nDimensione: {internet_manager.format_file_size(os.path.getsize(path))}\nDurata: {print_duration_table(path, description=False, return_string=True)}\nTitolo: {os.path.basename(path.replace(f'.{extension_output}', ''))}"
                 clean_message = re.sub(r'\[[a-zA-Z]+\]', '', message)
                 bot.send_message(clean_message, None)
 
