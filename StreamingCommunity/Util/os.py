@@ -1,17 +1,10 @@
 # 24.01.24
 
-import io
 import os
-import glob
-import sys
 import shutil
 import logging
 import platform
 import inspect
-import subprocess
-import contextlib
-import importlib.metadata
-import socket
 
 
 # External library
@@ -22,8 +15,7 @@ from pathvalidate import sanitize_filename, sanitize_filepath
 
 
 # Internal utilities
-from .ffmpeg_installer import check_ffmpeg
-from .bento4_installer import check_mp4decrypt
+from .installer import check_ffmpeg, check_mp4decrypt, check_device_wvd_path
 
 
 # Variable
@@ -78,27 +70,37 @@ class OsManager:
 
         return normalized
 
-    def get_sanitize_file(self, filename: str) -> str:
-        """Sanitize filename."""
+    def get_sanitize_file(self, filename: str, year: str = None) -> str:
+        """Sanitize filename. Optionally append a year in format ' (YYYY)' if year is provided and valid."""
         if not filename:
             return filename
 
-        # Decode and sanitize
+        # Extract and validate year if provided
+        year_str = ""
+        if year:
+            y = str(year).split('-')[0].strip()
+            if y.isdigit() and len(y) == 4:
+                year_str = f" ({y})"
+
+        # Decode and sanitize base filename
         decoded = unidecode(filename)
         sanitized = sanitize_filename(decoded)
 
         # Split name and extension
         name, ext = os.path.splitext(sanitized)
 
+        # Append year if present
+        name_with_year = name + year_str
+
         # Calculate available length for name considering the '...' and extension
         max_name_length = self.max_length - len('...') - len(ext)
 
         # Truncate name if it exceeds the max name length
-        if len(name) > max_name_length:
-            name = name[:max_name_length] + '...'
+        if len(name_with_year) > max_name_length:
+            name_with_year = name_with_year[:max_name_length] + '...'
 
         # Ensure the final file name includes the extension
-        return name + ext
+        return name_with_year + ext
 
     def get_sanitize_path(self, path: str) -> str:
         """Sanitize complete path."""
@@ -243,7 +245,7 @@ class OsManager:
             return False
 
 
-class InternManager():
+class InternetManager():
     def format_file_size(self, size_bytes: float) -> str:
         """
         Formats a file size from bytes into a human-readable string representation.
@@ -283,27 +285,6 @@ class InternManager():
         else:
             return f"{bytes / (1024 * 1024):.2f} MB/s"
 
-    def check_dns_resolve(self, domains_list: list = None):
-        """
-        Check if the system's current DNS server can resolve a domain name.
-        Works on both Windows and Unix-like systems.
-        
-        Args:
-            domains_list (list, optional): List of domains to test. Defaults to common domains.
-
-        Returns:
-            bool: True if the current DNS server can resolve a domain name,
-                    False if can't resolve or in case of errors
-        """
-        test_domains = domains_list or ["github.com", "google.com", "microsoft.com", "amazon.com"]
-        
-        try:
-            for domain in test_domains:
-                # socket.gethostbyname() works consistently across all platforms
-                socket.gethostbyname(domain)
-            return True
-        except (socket.gaierror, socket.error):
-            return False
 
 class OsSummary:
     def __init__(self):
@@ -311,145 +292,39 @@ class OsSummary:
         self.ffprobe_path = None
         self.ffplay_path = None
         self.mp4decrypt_path = None
+        self.wvd_path = None
+        self.init()
 
-    def get_binary_directory(self):
-        """Get the binary directory based on OS."""
-        system = platform.system().lower()
-        home = os.path.expanduser('~')
+    def init(self):
 
-        if system == 'windows':
-            return os.path.join(os.path.splitdrive(home)[0] + os.path.sep, 'binary')
-        elif system == 'darwin':
-            return os.path.join(home, 'Applications', 'binary')
-        else:  # linux
-            return os.path.join(home, '.local', 'bin', 'binary')
-
-    def check_ffmpeg_location(self, command: list) -> str:
-        """
-        Check if a specific executable (ffmpeg or ffprobe) is located using the given command.
-        Returns the path of the executable or None if not found.
-        """
-        try:
-            result = subprocess.check_output(command, text=True).strip()
-            return result.split('\n')[0] if result else None
-
-        except subprocess.CalledProcessError:
-            return None
-
-    def get_library_version(self, lib_name: str):
-        """
-        Retrieve the version of a Python library.
-
-        Args:
-            lib_name (str): The name of the Python library.
-
-        Returns:
-            str: The library name followed by its version, or `-not installed` if not found.
-        """
-        try:
-            version = importlib.metadata.version(lib_name)
-            return f"{lib_name}-{version}"
-
-        except importlib.metadata.PackageNotFoundError:
-            return f"{lib_name}-not installed"
-
-    def install_library(self, lib_name: str):
-        """
-        Install a Python library using pip.
-
-        Args:
-            lib_name (str): The name of the library to install.
-        """
-        try:
-            console.print(f"Installing {lib_name}...", style="bold yellow")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", lib_name])
-            console.print(f"{lib_name} installed successfully!", style="bold green")
-
-        except subprocess.CalledProcessError as e:
-            console.print(f"Failed to install {lib_name}: {e}", style="bold red")
-            sys.exit(1)
-
-    def check_python_version(self):
-        """
-        Check if the installed Python is the official CPython distribution.
-        Exits with a message if not the official version.
-        """
-        python_implementation = platform.python_implementation()
-        python_version = platform.python_version()
-
-        if python_implementation != "CPython":
-            console.print(f"[bold red]Warning: You are using a non-official Python distribution: {python_implementation}.[/bold red]")
-            console.print("Please install the official Python from [bold blue]https://www.python.org[/bold blue] and try again.", style="bold yellow")
-            sys.exit(0)
-
-        console.print(f"[cyan]Python version: [bold red]{python_version}[/bold red]")
-
-    def get_system_summary(self):
-        self.check_python_version()
-
-        # FFmpeg detection
-        binary_dir = self.get_binary_directory()
-        system = platform.system().lower()
-        arch = platform.machine().lower()
-
-        # Map architecture names
-        arch_map = {
-            'amd64': 'x64',
-            'x86_64': 'x64',
-            'x64': 'x64',
-            'arm64': 'arm64',
-            'aarch64': 'arm64',
-            'armv7l': 'arm',
-            'i386': 'ia32',
-            'i686': 'ia32'
-        }
-        arch = arch_map.get(arch, arch)
-
-        # Check FFmpeg binaries
-        if os.path.exists(binary_dir):
-            ffmpeg_files = glob.glob(os.path.join(binary_dir, f'*ffmpeg*{arch}*'))
-            ffprobe_files = glob.glob(os.path.join(binary_dir, f'*ffprobe*{arch}*'))
-
-            if ffmpeg_files and ffprobe_files:
-                self.ffmpeg_path = ffmpeg_files[0]
-                self.ffprobe_path = ffprobe_files[0]
-
-                if system != 'windows':
-                    os.chmod(self.ffmpeg_path, 0o755)
-                    os.chmod(self.ffprobe_path, 0o755)
-            else:
-                self.ffmpeg_path, self.ffprobe_path, self.ffplay_path = check_ffmpeg()
-        else:
-            self.ffmpeg_path, self.ffprobe_path, self.ffplay_path = check_ffmpeg()
-
-        # Check mp4decrypt
+        # Check for binaries
+        self.ffmpeg_path, self.ffprobe_path, _ = check_ffmpeg()
         self.mp4decrypt_path = check_mp4decrypt()
+        self.wvd_path = check_device_wvd_path()
+        self._display_binary_paths()
 
-        if not self.ffmpeg_path or not self.ffprobe_path:
-            console.log("[red]Can't locate ffmpeg or ffprobe")
-            sys.exit(0)
-
-        if not self.mp4decrypt_path:
-            console.log("[yellow]Warning: mp4decrypt not found")
+    def _display_binary_paths(self):
+        """Display the paths of all detected binaries."""
+        paths = {
+            'ffmpeg': self.ffmpeg_path,
+            'ffprobe': self.ffprobe_path,
+            'mp4decrypt': self.mp4decrypt_path,
+            'wvd': self.wvd_path
+        }
         
-        ffmpeg_str = f"'{self.ffmpeg_path}'" if self.ffmpeg_path else "None"
-        ffprobe_str = f"'{self.ffprobe_path}'" if self.ffprobe_path else "None"
-        mp4decrypt_str = f"'{self.mp4decrypt_path}'" if self.mp4decrypt_path else "None"
-        wvd_path = get_wvd_path()
-        wvd_str = f"'{wvd_path}'" if wvd_path else "None"
+        path_strings = []
+        for name, path in paths.items():
+            path_str = f"'{path}'" if path else "None"
+            path_strings.append(f"[red]{name} [bold yellow]{path_str}[/bold yellow]")
         
-        console.print(f"[cyan]Path: [red]ffmpeg [bold yellow]{ffmpeg_str}[/bold yellow][white], [red]ffprobe [bold yellow]{ffprobe_str}[/bold yellow][white], [red]mp4decrypt [bold yellow]{mp4decrypt_str}[/bold yellow][white], [red]wvd [bold yellow]{wvd_str}[/bold yellow]")
+        console.print(f"[cyan]Path: {', [white]'.join(path_strings)}")
 
 
+# Initialize the os_summary, internet_manager, and os_manager when the module is imported
 os_manager = OsManager()
-internet_manager = InternManager()
+internet_manager = InternetManager()
 os_summary = OsSummary()
 
-
-@contextlib.contextmanager
-def suppress_output():
-    with contextlib.redirect_stdout(io.StringIO()):
-        yield
 
 def get_call_stack():
     """Retrieves the current call stack with details about each call."""
@@ -487,21 +362,5 @@ def get_mp4decrypt_path():
     return os_summary.mp4decrypt_path
 
 def get_wvd_path():
-    """
-    Searches the system's binary folder and returns the path of the first file ending with 'wvd'.
-    Returns None if not found.
-    """
-    system = platform.system().lower()
-    home = os.path.expanduser('~')
-    if system == 'windows':
-        binary_dir = os.path.join(os.path.splitdrive(home)[0] + os.path.sep, 'binary')
-    elif system == 'darwin':
-        binary_dir = os.path.join(home, 'Applications', 'binary')
-    else:
-        binary_dir = os.path.join(home, '.local', 'bin', 'binary')
-    if not os.path.exists(binary_dir):
-        return None
-    for file in os.listdir(binary_dir):
-        if file.lower().endswith('wvd'):
-            return os.path.join(binary_dir, file)
-    return None
+    """Returns the path of wvd."""
+    return os_summary.wvd_path

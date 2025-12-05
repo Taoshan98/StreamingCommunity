@@ -2,8 +2,6 @@
 
 import os
 import sys
-import time
-import glob
 import logging
 import platform
 import argparse
@@ -11,8 +9,7 @@ import importlib
 import threading
 import asyncio
 import subprocess
-from urllib.parse import urlparse
-from typing import Callable, Dict, Tuple
+from typing import Callable, Tuple
 
 
 # External library
@@ -22,19 +19,17 @@ from rich.prompt import Prompt
 
 # Internal utilities
 from .global_search import global_search
+from StreamingCommunity.Api.Template.loader import load_search_functions
 from StreamingCommunity.Util.message import start_message
 from StreamingCommunity.Util.config_json import config_manager
-from StreamingCommunity.Util.os import os_summary, internet_manager, os_manager
+from StreamingCommunity.Util.os import os_manager
 from StreamingCommunity.Util.logger import Logger
-from StreamingCommunity.Lib.TMBD import tmdb
 from StreamingCommunity.Upload.update import update as git_update
 from StreamingCommunity.TelegramHelp.telegram_bot import get_bot_instance, TelegramSession
 
 
 # Config
-SHOW_TRENDING = config_manager.get_bool('DEFAULT', 'show_trending')
 TELEGRAM_BOT = config_manager.get_bool('DEFAULT', 'telegram_bot')
-BYPASS_DNS = config_manager.get_bool('DEFAULT', 'bypass_dns')
 COLOR_MAP = {
     "anime": "red",
     "film_&_serie": "yellow", 
@@ -58,46 +53,9 @@ def run_function(func: Callable[..., None], close_console: bool = False, search_
         func(search_terms)
 
 
-def load_search_functions() -> Dict[str, Tuple]:
-    """Load and return all available search functions from site modules."""
-    loaded_functions = {}
-    excluded_sites = {"cb01new", "guardaserie", "ilcorsaronero", "mostraguarda"} if TELEGRAM_BOT else set()
-    
-    # Determine base path
-    base_path = os.path.join(sys._MEIPASS, "StreamingCommunity") if getattr(sys, 'frozen', False) else os.path.dirname(__file__)
-    api_dir = os.path.join(base_path, 'Api', 'Site')
-    
-    # Get all modules with their indices and sort them
-    modules = []
-    for init_file in glob.glob(os.path.join(api_dir, '*', '__init__.py')):
-        module_name = os.path.basename(os.path.dirname(init_file))
-        
-        if module_name in excluded_sites:
-            continue
-            
-        try:
-            mod = importlib.import_module(f'StreamingCommunity.Api.Site.{module_name}')
-            if not getattr(mod, '_deprecate', False):
-                modules.append((module_name, getattr(mod, 'indice'), getattr(mod, '_useFor')))
-                logging.info(f"Load module name: {module_name}")
-        except Exception as e:
-            console.print(f"[red]Failed to import module {module_name}: {str(e)}")
-    
-    # Sort by index and load search functions
-    for module_name, _, use_for in sorted(modules, key=lambda x: x[1]):
-        try:
-            mod = importlib.import_module(f'StreamingCommunity.Api.Site.{module_name}')
-            loaded_functions[f'{module_name}_search'] = (getattr(mod, 'search'), use_for)
-        except Exception as e:
-            console.print(f"[red]Failed to load search function from module {module_name}: {str(e)}")
-    
-    return loaded_functions
-
-
 def initialize():
     """Initialize the application with system checks and setup."""
     start_message()
-    os_summary.get_system_summary()
     
     # Windows 7 terminal size fix
     if platform.system() == "Windows" and "7" in platform.version():
@@ -107,13 +65,7 @@ def initialize():
     if sys.version_info < (3, 7):
         console.log("[red]Install python version > 3.7.16")
         sys.exit(0)
-    
-    # Show trending content
-    if SHOW_TRENDING:
-        print()
-        tmdb.display_trending_films()
-        tmdb.display_trending_tv_shows()
-    
+
     # Attempt GitHub update
     try:
         git_update()
@@ -317,30 +269,8 @@ def force_exit():
     os._exit(0)
 
 
-def check_dns_and_exit_if_needed():
-    """Check DNS configuration and exit if required."""
-    if BYPASS_DNS:
-        return
-        
-    hostname_list = [
-        urlparse(site_info.get('full_url')).hostname 
-        for site_info in config_manager.configSite.values() 
-        if urlparse(site_info.get('full_url')).hostname
-    ]
-    
-    if not internet_manager.check_dns_resolve(hostname_list):
-        console.print("[red]\nERROR: DNS configuration is required!")
-        console.print("[red]The program cannot function correctly without proper DNS settings.")
-        console.print("\n[yellow]Please configure one of these DNS servers:")
-        console.print("[red]• Cloudflare (1.1.1.1) 'https://developers.cloudflare.com/1.1.1.1/setup/windows/'")
-        console.print("[red]• Quad9 (9.9.9.9) 'https://docs.quad9.net/Setup_Guides/Windows/Windows_10/'")
-        console.print("\n[yellow]-> The program will not work until you configure your DNS settings.")
-        sys.exit(0)
-
-
 def setup_argument_parser(search_functions):
     """Setup and return configured argument parser."""
-    # Build help text
     module_info = {}
     for alias, (_func, _use_for) in search_functions.items():
         module_name = alias.split("_")[0].lower()
@@ -361,15 +291,24 @@ def setup_argument_parser(search_functions):
     
     # Add arguments
     parser.add_argument("script_id", nargs="?", default="unknown", help="ID dello script")
-    parser.add_argument('--add_siteName', type=bool, help='Enable/disable adding site name to file name')
+    parser.add_argument('-s', '--search', default=None, help='Search terms')
+    parser.add_argument('--global', action='store_true', help='Global search across sites')
     parser.add_argument('--not_close', type=bool, help='Keep console open after execution')
-    parser.add_argument('--default_video_worker', type=int, help='Video workers for M3U8 download (default: 12)')
-    parser.add_argument('--default_audio_worker', type=int, help='Audio workers for M3U8 download (default: 12)')
+    
     parser.add_argument('--specific_list_audio', type=str, help='Audio languages (e.g., ita,eng)')
     parser.add_argument('--specific_list_subtitles', type=str, help='Subtitle languages (e.g., eng,spa)')
-    parser.add_argument('--global', action='store_true', help='Global search across sites')
+    parser.add_argument('--force_resolution', type=str, choices=["Best", "Worst", "720p", "1080p", "480p", "360p"],
+                    help='Choose video resolution:\n'
+                            '  "Best": Highest available resolution\n'
+                            '  "Worst": Lowest available resolution\n'
+                            '  "720p": Force 720p resolution\n'
+                            '  Specific resolutions:\n'
+                            '    - 1080p (1920x1080)\n'
+                            '    - 720p (1280x720)\n'
+                            '    - 480p (640x480)\n'
+                            '    - 360p (640x360)')
+
     parser.add_argument('--category', type=int, help='Category (1: anime, 2: film_&_serie, 3: serie, 4: torrent)')
-    parser.add_argument('-s', '--search', default=None, help='Search terms')
     parser.add_argument('--auto-first', action='store_true', help='Auto-download first result (use with --site and --search)')
     parser.add_argument('--site', type=str, help='Site by name or index')
     
@@ -381,10 +320,8 @@ def apply_config_updates(args):
     config_updates = {}
     
     arg_mappings = {
-        'add_siteName': 'DEFAULT.add_siteName',
         'not_close': 'DEFAULT.not_close', 
-        'default_video_worker': 'M3U8_DOWNLOAD.default_video_worker',
-        'default_audio_worker': 'M3U8_DOWNLOAD.default_audio_worker'
+        'force_resolution': 'M3U8_CONVERSION.force_resolution',
     }
     
     for arg_name, config_key in arg_mappings.items():
@@ -483,35 +420,33 @@ def get_user_site_selection(args, choice_labels):
     else:
         # Show all sites
         legend_text = " | ".join([f"[{color}]{cat.capitalize()}[/{color}]" for cat, color in COLOR_MAP.items()])
+        legend_text += " | [magenta]Global[/magenta]"
         console.print(f"\n[bold cyan]Category Legend:[/bold cyan] {legend_text}")
         
         if TELEGRAM_BOT:
-            category_legend = "Categorie: \n" + " | ".join([cat.capitalize() for cat in COLOR_MAP.keys()])
+            category_legend = "Categorie: \n" + " | ".join([cat.capitalize() for cat in COLOR_MAP.keys()]) + " | Global"
             prompt_message = "Inserisci il sito:\n" + "\n".join([f"{key}: {label[0]}" for key, label in choice_labels.items()])
             console.print(f"\n{prompt_message}")
             return bot.ask("select_provider", f"{category_legend}\n\n{prompt_message}", None)
         else:
+            choice_keys = list(choice_labels.keys()) + ["global"]
             prompt_message = "[cyan]Insert site: " + ", ".join([
                 f"[{COLOR_MAP.get(label[1], 'white')}]({key}) {label[0]}[/{COLOR_MAP.get(label[1], 'white')}]" 
                 for key, label in choice_labels.items()
-            ])
-            return msg.ask(prompt_message, choices=list(choice_labels.keys()), default="0", show_choices=False, show_default=False)
+            ]) + ", [magenta](global) Global[/magenta]"
+            return msg.ask(prompt_message, choices=choice_keys, default="0", show_choices=False, show_default=False)
 
 
 def main(script_id=0):
     if TELEGRAM_BOT:
         get_bot_instance().send_message(f"Avviato script {script_id}", None)
 
-    start = time.time()
     Logger()
     execute_hooks('pre_run')
     initialize()
 
     try:
-        check_dns_and_exit_if_needed()
-
         search_functions = load_search_functions()
-        logging.info(f"Load module in: {time.time() - start} s")
 
         parser = setup_argument_parser(search_functions)
         args = parser.parse_args()
@@ -528,6 +463,10 @@ def main(script_id=0):
             return
 
         category = get_user_site_selection(args, choice_labels)
+
+        if category == "global":
+            global_search(args.search)
+            return
 
         if category in input_to_function:
             run_function(input_to_function[category], search_terms=args.search)

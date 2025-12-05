@@ -1,6 +1,7 @@
 # 19.06.24
 
 import sys
+import time
 import logging
 from typing import List
 
@@ -25,14 +26,6 @@ MAP_EPISODE = config_manager.get('OUT_FOLDER', 'map_episode_name')
 def dynamic_format_number(number_str: str) -> str:
     """
     Formats an episode number string, intelligently handling both integer and decimal episode numbers.
-    
-    This function is designed to handle various episode number formats commonly found in media series:
-    1. For integer episode numbers less than 10 (e.g., 1, 2, ..., 9), it adds a leading zero (e.g., 01, 02, ..., 09)
-    2. For integer episode numbers 10 and above, it preserves the original format without adding leading zeros
-    3. For decimal episode numbers (e.g., "7.5", "10.5"), it preserves the decimal format exactly as provided
-    
-    The function is particularly useful for media file naming conventions where special episodes
-    or OVAs may have decimal notations (like episode 7.5) which should be preserved in their original format.
     
     Parameters:
         - number_str (str): The episode number as a string, which may contain integers or decimals.
@@ -104,7 +97,11 @@ def manage_selection(cmd_insert: str, max_count: int) -> List[int]:
             list_selection = list(range(1, max_count + 1))
             break
 
-        cmd_insert = msg.ask("[red]Invalid input. Please enter a valid command: ")
+        elif cmd_insert.lower() in ("q", "quit"):
+            console.print("\n[red]Quit ...")
+            sys.exit(0)
+
+        cmd_insert = msg.ask("[red]Invalid input. Please enter a valid command")
     
     logging.info(f"List return: {list_selection}")
     return list_selection
@@ -145,7 +142,6 @@ def map_episode_title(tv_name: str, number_season: int, episode_number: int, epi
     return map_episode_temp
 
 
-# --> for season
 def validate_selection(list_season_select: List[int], seasons_count: int) -> List[int]:
     """
     Validates and adjusts the selected seasons based on the available seasons.
@@ -165,14 +161,11 @@ def validate_selection(list_season_select: List[int], seasons_count: int) -> Lis
 
             # If the list is empty, the input was completely invalid
             if not valid_seasons:
-                logging.error(f"Invalid selection: The selected seasons are outside the available range (1-{seasons_count}). Please try again.")
-
-                # Re-prompt for valid input
-                input_seasons = input(f"Enter valid season numbers (1-{seasons_count}): ")
+                input_seasons = msg.ask(f"[red]Enter valid season numbers (1-{seasons_count})")
                 list_season_select = list(map(int, input_seasons.split(',')))
-                continue  # Re-prompt the user if the selection is invalid
+                continue
             
-            return valid_seasons  # Return the valid seasons if the input is correct
+            return valid_seasons
         
         except ValueError:
             logging.error("Error: Please enter valid integers separated by commas.")
@@ -182,7 +175,6 @@ def validate_selection(list_season_select: List[int], seasons_count: int) -> Lis
             list_season_select = list(map(int, input_seasons.split(',')))
 
 
-# --> for episode
 def validate_episode_selection(list_episode_select: List[int], episodes_count: int) -> List[int]:
     """
     Validates and adjusts the selected episodes based on the available episodes.
@@ -217,6 +209,76 @@ def validate_episode_selection(list_episode_select: List[int], episodes_count: i
             # Prompt the user for valid input again
             input_episodes = input(f"Enter valid episode numbers (1-{episodes_count}): ")
             list_episode_select = list(map(int, input_episodes.split(',')))
+
+
+def display_seasons_list(seasons_manager) -> str:
+    """
+    Display seasons list and handle user input.
+
+    Parameters:
+        - seasons_manager: Manager object containing seasons information.
+
+    Returns:
+        last_command (str): Last command entered by the user.
+    """
+    if len(seasons_manager.seasons) == 1:
+        console.print("\n[green]Only one season available, selecting it automatically[/green]")
+        time.sleep(1)
+        return "1"
+    
+    # Set up table for displaying seasons
+    table_show_manager = TVShowManager()
+
+    # Check if 'type' and 'id' attributes exist in the first season
+    try:
+        has_type = hasattr(seasons_manager.seasons[0], 'type') and (seasons_manager.seasons[0].type) is not None and str(seasons_manager.seasons[0].type) != ''
+        has_id = hasattr(seasons_manager.seasons[0], 'id') and (seasons_manager.seasons[0].id) is not None and str(seasons_manager.seasons[0].id) != ''
+
+    except IndexError:
+        has_type = False
+        has_id = False
+
+    # Add columns to the table
+    column_info = {
+        "Index": {'color': 'red'},
+        "Name": {'color': 'yellow'}
+    }
+
+    if has_type:
+        column_info["Type"] = {'color': 'magenta'}
+    
+    if has_id:
+        column_info["ID"] = {'color': 'cyan'}
+
+    table_show_manager.add_column(column_info)
+
+    # Populate the table with seasons information
+    for i, season in enumerate(seasons_manager.seasons):
+        season_name = season.name if hasattr(season, 'name') else 'N/A'
+        season_info = {
+            'Index': str(i + 1),
+            'Name': season_name
+        }
+
+        # Add 'Type' and 'ID' if they exist
+        if has_type:
+            season_type = season.type if hasattr(season, 'type') else 'N/A'
+            season_info['Type'] = season_type
+        
+        if has_id:
+            season_id = season.id if hasattr(season, 'id') else 'N/A'
+            season_info['ID'] = season_id
+
+        table_show_manager.add_tv_show(season_info)
+
+    # Run the table and handle user input
+    last_command = table_show_manager.run()
+
+    if last_command in ("q", "quit"):
+        console.print("\n[red]Quit ...")
+        sys.exit(0)
+
+    return last_command
 
 
 def display_episodes_list(episodes_manager) -> str:

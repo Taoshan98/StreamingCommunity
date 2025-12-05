@@ -9,7 +9,8 @@ from rich.console import Console
 
 
 # Internal utilities
-from StreamingCommunity.Util.os import os_manager, get_wvd_path
+from StreamingCommunity.Util.config_json import config_manager
+from StreamingCommunity.Util.os import os_manager
 from StreamingCommunity.Util.message import start_message
 from StreamingCommunity.Util.headers import get_headers
 
@@ -22,11 +23,12 @@ from StreamingCommunity.Api.Template.Class.SearchType import MediaItem
 # Player
 from .util.fix_mpd import get_manifest
 from StreamingCommunity import DASH_Downloader
-from .util.get_license import get_bearer_token, get_playback_url, get_tracking_info, generate_license_url
+from .util.get_license import get_playback_url, get_tracking_info, generate_license_url
 
 
 # Variable
 console = Console()
+extension_output = config_manager.get("M3U8_CONVERSION", "extension")
 
 
 def download_film(select_title: MediaItem) -> Tuple[str, bool]:
@@ -40,24 +42,21 @@ def download_film(select_title: MediaItem) -> Tuple[str, bool]:
         - str: output path if successful, otherwise None
     """
     start_message()
-    console.print(f"[bold yellow]Download:[/bold yellow] [red]{site_constant.SITE_NAME}[/red] → [cyan]{select_title.name}[/cyan] \n")
+    console.print(f"\n[bold yellow]Download:[/bold yellow] [red]{site_constant.SITE_NAME}[/red] → [cyan]{select_title.name}[/cyan] \n")
 
     # Define the filename and path for the downloaded film
-    title_name = os_manager.get_sanitize_file(select_title.name) + ".mp4"
-    mp4_path = os.path.join(site_constant.MOVIE_FOLDER, title_name.replace(".mp4", ""))
+    title_name = os_manager.get_sanitize_file(select_title.name, select_title.date) + extension_output
+    mp4_path = os.path.join(site_constant.MOVIE_FOLDER, title_name.replace(extension_output, ""))
 
-    # Generate mpd and license URLs
-    bearer = get_bearer_token()
+    # Get playback URL and tracking info
+    playback_json = get_playback_url(select_title.id)
+    tracking_info = get_tracking_info(playback_json)['videos'][0]
 
-    playback_json = get_playback_url(bearer, select_title.id)
-    tracking_info = get_tracking_info(bearer, playback_json)[0]
-
-    license_url = generate_license_url(bearer, tracking_info)
-    mpd_url = get_manifest(tracking_info['video_src'])
+    license_url = generate_license_url(tracking_info)
+    mpd_url = get_manifest(tracking_info['url'])
 
     # Download the episode
     dash_process =  DASH_Downloader(
-        cdm_device=get_wvd_path(),
         license_url=license_url,
         mpd_url=mpd_url,
         output_path=os.path.join(mp4_path, title_name),

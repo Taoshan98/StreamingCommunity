@@ -12,7 +12,7 @@ from typing import Dict, List, Any
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
-from rich.style import Style
+from rich import box
 
 
 # Internal utilities
@@ -29,13 +29,18 @@ TELEGRAM_BOT = config_manager.get_bool('DEFAULT', 'telegram_bot')
 
 class TVShowManager:
     def __init__(self):
-        """Initialize TVShowManager with default values."""
+        """
+        Initialize TVShowManager with default values.
+        """
         self.console = Console()
         self.tv_shows: List[Dict[str, Any]] = []
         self.slice_start = 0
         self.slice_end = 10
         self.step = self.slice_end
         self.column_info = []
+        self.table_title = None
+        self.table_style = "blue"
+        self.show_lines = False
 
     def add_column(self, column_info: Dict[str, Dict[str, str]]) -> None:
         """
@@ -46,6 +51,26 @@ class TVShowManager:
         """
         self.column_info = column_info
 
+    def set_table_title(self, title: str) -> None:
+        """
+        Set the table title.
+        
+        Parameters:
+            - title (str): The title to display above the table.
+        """
+        self.table_title = title
+
+    def set_table_style(self, style: str = "blue", show_lines: bool = False) -> None:
+        """
+        Set the table border style and row lines.
+        
+        Parameters:
+            - style (str): Border color (e.g., "blue", "green", "magenta", "cyan")
+            - show_lines (bool): Whether to show lines between rows
+        """
+        self.table_style = style
+        self.show_lines = show_lines
+
     def add_tv_show(self, tv_show: Dict[str, Any]) -> None:
         """
         Add a TV show to the list of TV shows.
@@ -53,7 +78,8 @@ class TVShowManager:
         Parameters:
             - tv_show (Dict[str, Any]): Dictionary containing TV show details.
         """
-        self.tv_shows.append(tv_show)
+        if tv_show:
+            self.tv_shows.append(tv_show)
 
     def display_data(self, data_slice: List[Dict[str, Any]]) -> None:
         """
@@ -62,18 +88,46 @@ class TVShowManager:
         Parameters:
             - data_slice (List[Dict[str, Any]]): List of dictionaries containing TV show details to display.
         """
-        table = Table(border_style="white")
+        if not data_slice:
+            logging.error("Nothing to display.")
+            return 404
+            
+        if not self.column_info:
+            logging.error("Error: Column information not configured.")
+            return 404
+
+        # Create table with specified style
+        table = Table(
+            title=self.table_title,
+            box=box.ROUNDED,
+            show_header=True,
+            header_style="bold cyan",
+            border_style=self.table_style,
+            show_lines=self.show_lines,
+            padding=(0, 1)
+        )
 
         # Add columns dynamically based on provided column information
         for col_name, col_style in self.column_info.items():
-            color = col_style.get("color", None)
-            style = Style(color=color) if color else None
-            table.add_column(col_name, style=style, justify='center')
+            color = col_style.get("color", "white")
+            width = col_style.get("width", None)
+            justify = col_style.get("justify", "center")
+            
+            table.add_column(
+                col_name, 
+                style=color,
+                justify=justify,
+                width=width
+            )
 
         # Add rows dynamically based on available TV show data
-        for entry in data_slice:
-            row_data = [str(entry.get(col_name, '')) for col_name in self.column_info.keys()]
-            table.add_row(*row_data)
+        for idx, entry in enumerate(data_slice):
+            if entry:
+                row_data = [str(entry.get(col_name, '')) for col_name in self.column_info.keys()]
+                
+                # Alternate row styling for better readability
+                style = "dim" if idx % 2 == 1 else None
+                table.add_row(*row_data, style=style)
 
         self.console.print(table)
     
@@ -125,6 +179,14 @@ class TVShowManager:
         Returns:
             str: Last command executed before breaking out of the loop.
         """
+        if not self.tv_shows:
+            logging.error("Error: No data available for display.")
+            return ""
+            
+        if not self.column_info:
+            logging.error("Error: Columns not configured.")
+            return ""
+
         total_items = len(self.tv_shows)
         last_command = ""
         is_telegram = config_manager.get_bool('DEFAULT', 'telegram_bot')
@@ -132,9 +194,19 @@ class TVShowManager:
 
         while True:
             start_message()
-            self.display_data(self.tv_shows[self.slice_start:self.slice_end])
+            
+            # Check and adjust slice indices if out of bounds
+            current_slice = self.tv_shows[self.slice_start:self.slice_end]
+            if not current_slice and total_items > 0:
+                self.slice_start = 0
+                self.slice_end = min(self.step, total_items)
+                current_slice = self.tv_shows[self.slice_start:self.slice_end]
+            
+            result_func = self.display_data(current_slice)
+            if result_func == 404:
+                sys.exit(1)
 
-            # Find research function from call stack
+            # Get research function from call stack
             research_func = next((
                 f for f in get_call_stack()
                 if f['function'] == 'search' and f['script'] == '__init__.py'
@@ -225,5 +297,9 @@ class TVShowManager:
         return last_command
 
     def clear(self) -> None:
-        """Clear all TV shows data."""
+        """
+        Clear all TV shows data.
+        """
         self.tv_shows = []
+        self.slice_start = 0
+        self.slice_end = self.step

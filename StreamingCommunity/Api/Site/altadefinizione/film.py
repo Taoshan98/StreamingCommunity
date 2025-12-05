@@ -15,7 +15,7 @@ from StreamingCommunity.Util.headers import get_headers
 from StreamingCommunity.Util.http_client import create_client
 from StreamingCommunity.Util.message import start_message
 from StreamingCommunity.Util.config_json import config_manager
-from StreamingCommunity.TelegramHelp.telegram_bot import get_bot_instance, TelegramSession
+from StreamingCommunity.TelegramHelp.telegram_bot import TelegramSession
 
 
 # Logic class
@@ -30,7 +30,7 @@ from StreamingCommunity.Api.Player.supervideo import VideoSource
 
 # Variable
 console = Console()
-max_timeout = config_manager.get_int("REQUESTS", "timeout")
+extension_output = config_manager.get("M3U8_CONVERSION", "extension")
 
 
 def download_film(select_title: MediaItem) -> str:
@@ -43,20 +43,8 @@ def download_film(select_title: MediaItem) -> str:
     Return:
         - str: output path if successful, otherwise None
     """
-    if site_constant.TELEGRAM_BOT:
-        bot = get_bot_instance()
-        bot.send_message(f"Download in corso:\n{select_title.name}", None)
-
-        # Viene usato per lo screen
-        console.print(f"## Download: [red]{select_title.name} ##")
-
-        # Get script_id
-        script_id = TelegramSession.get_session()
-        if script_id != "unknown":
-            TelegramSession.updateScriptId(script_id, select_title.name)
-
     start_message()
-    console.print(f"[bold yellow]Download:[/bold yellow] [red]{site_constant.SITE_NAME}[/red] → [cyan]{select_title.name}[/cyan] \n")
+    console.print(f"\n[bold yellow]Download:[/bold yellow] [red]{site_constant.SITE_NAME}[/red] → [cyan]{select_title.name}[/cyan] \n")
     
     # Extract mostraguarda URL
     try:
@@ -92,8 +80,8 @@ def download_film(select_title: MediaItem) -> str:
     master_playlist = video_source.get_playlist()
 
     # Define the filename and path for the downloaded film
-    title_name = os_manager.get_sanitize_file(select_title.name) + ".mp4"
-    mp4_path = os.path.join(site_constant.MOVIE_FOLDER, title_name.replace(".mp4", ""))
+    title_name = os_manager.get_sanitize_file(select_title.name, select_title.date) + extension_output
+    mp4_path = os.path.join(site_constant.MOVIE_FOLDER, title_name.replace(extension_output, ""))
 
     # Download the film using the m3u8 playlist, and output filename
     hls_process = HLS_Downloader(

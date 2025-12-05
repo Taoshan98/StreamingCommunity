@@ -1,32 +1,24 @@
 # 16.03.25
 
-import os
-import sys
-
-
 # External libraries
-from curl_cffi import requests
 from rich.console import Console
 
 
 # Internal utilities
 from StreamingCommunity.Util.config_json import config_manager
-from StreamingCommunity.Util.os import get_wvd_path
-from StreamingCommunity.Util.headers import get_headers
 from StreamingCommunity.Util.table import TVShowManager
 
 
 # Logic class
 from StreamingCommunity.Api.Template.config_loader import site_constant
 from StreamingCommunity.Api.Template.Class.SearchType import MediaManager
-from .util.get_license import get_auth_token, generate_device_id
+from .util.get_license import CrunchyrollClient
 
 
 # Variable
 console = Console()
 media_search_manager = MediaManager()
 table_show_manager = TVShowManager()
-max_timeout = config_manager.get_int("REQUESTS", "timeout")
 
 
 def title_search(query: str) -> int:
@@ -42,18 +34,16 @@ def title_search(query: str) -> int:
     media_search_manager.clear()
     table_show_manager.clear()
 
-    # Check CDM file before usage
-    cdm_device_path = get_wvd_path()
-    if not cdm_device_path or not isinstance(cdm_device_path, (str, bytes, os.PathLike)) or not os.path.isfile(cdm_device_path):
-        console.print(f"[bold red] CDM file not found or invalid path: {cdm_device_path}[/bold red]")
-        sys.exit(0)
+    config = config_manager.get_dict("SITE_LOGIN", "crunchyroll")
+    if not config.get('device_id') or not config.get('etp_rt'):
+        console.print("[bold red] device_id or etp_rt is missing or empty in config.json.[/bold red]")
+        raise Exception("device_id or etp_rt is missing or empty in config.json.")
 
-    # Check if x_cr_tab_id or etp_rt is present
-    if config_manager.get_dict("SITE_LOGIN", "crunchyroll")['x_cr_tab_id'] is None or config_manager.get_dict("SITE_LOGIN", "crunchyroll")['x_cr_tab_id'] == "" or config_manager.get_dict("SITE_LOGIN", "crunchyroll")['etp_rt'] is None or config_manager.get_dict("SITE_LOGIN", "crunchyroll")['etp_rt'] == "":
-        console.print("[bold red] x_cr_tab_id or etp_rt is missing or empty.[/bold red]")
-        sys.exit(0)
+    client = CrunchyrollClient()
+    if not client.start():
+        console.print("[bold red] Failed to authenticate with Crunchyroll.[/bold red]")
+        raise Exception("Failed to authenticate with Crunchyroll.")
 
-    # Build new Crunchyroll API search URL
     api_url = "https://www.crunchyroll.com/content/v2/discover/search"
 
     params = {
@@ -65,19 +55,10 @@ def title_search(query: str) -> int:
         "locale": "it-IT"
     }
 
-    headers = get_headers()
-    headers['authorization'] = f"Bearer {get_auth_token(generate_device_id()).access_token}"
-
     console.print(f"[cyan]Search url: [yellow]{api_url}")
 
     try:
-        response = requests.get(
-            api_url,
-            params=params,
-            headers=headers,
-            timeout=max_timeout,
-            impersonate="chrome110"
-        )
+        response = client._request_with_retry('GET', api_url, params=params)
         response.raise_for_status()
 
     except Exception as e:
@@ -100,18 +81,20 @@ def title_search(query: str) -> int:
             elif item.get("type") == "series":
                 meta = item.get("series_metadata", {})
 
+                # Heuristic: single episode series might be films
                 if meta.get("episode_count") == 1 and meta.get("season_count", 1) == 1 and meta.get("series_launch_year"):
-                    tipo = "film" if "film" in item.get("description", "").lower() or "movie" in item.get("description", "").lower() else "tv"
+                    description = item.get("description", "").lower()
+                    if "film" in description or "movie" in description:
+                        tipo = "film"
+                    else:
+                        tipo = "tv"
                 else:
                     tipo = "tv"
-
             else:
                 continue
 
             url = ""
-            if tipo == "tv":
-                url = f"https://www.crunchyroll.com/series/{item.get('id')}"
-            elif tipo == "film":
+            if tipo in ("tv", "film"):
                 url = f"https://www.crunchyroll.com/series/{item.get('id')}"
             else:
                 continue

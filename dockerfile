@@ -10,10 +10,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY requirements.txt .
-
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
+
+COPY GUI/requirements.txt ./GUI/requirements.txt
+RUN pip install --no-cache-dir -r GUI/requirements.txt
 
 COPY . .
 
-CMD ["python", "test_run.py"]
+ENV PYTHONPATH="/app:${PYTHONPATH}"
+
+EXPOSE 8000
+
+CMD ["python", "GUI/manage.py", "runserver", "0.0.0.0:8000"]

@@ -48,7 +48,7 @@ def download_episode(index_select: int, scrape_serie: ScrapeSerieAnime, video_so
 
     # Get episode information
     obj_episode = scrape_serie.selectEpisode(1, index_select)
-    console.print(f"[bold yellow]Download:[/bold yellow] [red]{site_constant.SITE_NAME}[/red] ([cyan]E{obj_episode.number}[/cyan]) \n")
+    console.print(f"\n[bold yellow]Download:[/bold yellow] [red]{site_constant.SITE_NAME}[/red] → [cyan]{scrape_serie.series_name}[/cyan] ([cyan]E{obj_episode.number}[/cyan]) \n")
 
     if site_constant.TELEGRAM_BOT:
         bot = get_bot_instance()
@@ -104,7 +104,7 @@ def download_series(select_title: MediaItem, season_selection: str = None, episo
 
     # Get episode information
     episoded_count = scrape_serie.get_count_episodes()
-    console.print(f"[green]Episodes count:[/green] [red]{episoded_count}[/red]")
+    console.print(f"\n[green]Episodes count:[/green] [red]{episoded_count}[/red]")
     
     # Telegram bot integration
     if episode_selection is None:

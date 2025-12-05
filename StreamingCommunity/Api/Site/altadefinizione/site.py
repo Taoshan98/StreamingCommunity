@@ -2,14 +2,13 @@
 
 
 # External libraries
-import httpx
 from bs4 import BeautifulSoup
 from rich.console import Console
 
 
 # Internal utilities
-from StreamingCommunity.Util.config_json import config_manager
 from StreamingCommunity.Util.headers import get_userAgent
+from StreamingCommunity.Util.http_client import create_client
 from StreamingCommunity.Util.table import TVShowManager
 from StreamingCommunity.TelegramHelp.telegram_bot import get_bot_instance
 
@@ -23,7 +22,6 @@ from StreamingCommunity.Api.Template.Class.SearchType import MediaManager
 console = Console()
 media_search_manager = MediaManager()
 table_show_manager = TVShowManager()
-max_timeout = config_manager.get_int("REQUESTS", "timeout")
 
 
 def title_search(query: str) -> int:
@@ -46,14 +44,8 @@ def title_search(query: str) -> int:
     console.print(f"[cyan]Search url: [yellow]{search_url}")
 
     try:
-        response = httpx.post(
-            search_url, 
-            headers={'user-agent': get_userAgent()}, 
-            timeout=max_timeout, 
-            follow_redirects=True
-        )
+        response = create_client(headers={'user-agent': get_userAgent()}).get(search_url)
         response.raise_for_status()
-
     except Exception as e:
         console.print(f"[red]Site: {site_constant.SITE_NAME}, request search error: {e}")
         if site_constant.TELEGRAM_BOT:
@@ -64,28 +56,38 @@ def title_search(query: str) -> int:
     if site_constant.TELEGRAM_BOT:
         choices = []
 
-    # Create soup istance
+    # Create soup instance
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # Collect data from soup
-    for i, movie_div in enumerate(soup.find_all("div", class_="movie")):
+    # Collect data from new structure
+    boxes = soup.find("div", id="dle-content").find_all("div", class_="box")
+    for i, box in enumerate(boxes):
+        
+        title_tag = box.find("h2", class_="titleFilm")
+        a_tag = title_tag.find("a")
+        title = a_tag.get_text(strip=True)
+        url = a_tag.get("href")
 
-        title_tag = movie_div.find("h2", class_="movie-title")
-        title = title_tag.find("a").get_text(strip=True)
-        url = title_tag.find("a").get("href")
+        # Image
+        img_tag = box.find("img", class_="attachment-loc-film")
+        image_url = None
+        if img_tag:
+            img_src = img_tag.get("src")
+            if img_src and img_src.startswith("/"):
+                image_url = f"{site_constant.FULL_URL}{img_src}"
+            else:
+                image_url = img_src
 
-        # Define typo
-        if "/serie-tv/" in url:
-            tipo = "tv"
-        else:
-            tipo = "film"
+        # Type
+        tipo = "tv" if "/serie-tv/" in url else "film"
 
-        media_search_manager.add_media({
+        media_dict = {
             'url': url,
             'name': title,
             'type': tipo,
-            'image': f"{site_constant.FULL_URL}{movie_div.find('img', class_='layer-image').get('data-src')}"
-        })
+            'image': image_url
+        }
+        media_search_manager.add_media(media_dict)
 
         if site_constant.TELEGRAM_BOT:
             choice_text = f"{i} - {title} ({tipo})"
@@ -94,6 +96,6 @@ def title_search(query: str) -> int:
     if site_constant.TELEGRAM_BOT:
         if choices:
             bot.send_message("Lista dei risultati:", choices)
-	
+
     # Return the number of titles found
     return media_search_manager.get_length()

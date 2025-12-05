@@ -11,7 +11,7 @@ from rich.console import Console
 # Internal utilities
 from StreamingCommunity.Util.message import start_message
 from StreamingCommunity.Util.config_json import config_manager
-from StreamingCommunity.Util.os import os_manager, get_wvd_path
+from StreamingCommunity.Util.os import os_manager
 
 
 # Logic class
@@ -21,12 +21,12 @@ from StreamingCommunity.Api.Template.Class.SearchType import MediaItem
 
 # Player
 from StreamingCommunity import DASH_Downloader
-from .util.get_license import get_playback_session, get_auth_token, generate_device_id
+from .util.get_license import get_playback_session, CrunchyrollClient
 
 
 # Variable
 console = Console()
-max_timeout = config_manager.get_int("REQUESTS", "timeout")
+extension_output = config_manager.get("M3U8_CONVERSION", "extension")
 
 
 def download_film(select_title: MediaItem) -> str:
@@ -40,24 +40,45 @@ def download_film(select_title: MediaItem) -> str:
         - str: output path if successful, otherwise None
     """
     start_message()
-    console.print(f"[bold yellow]Download:[/bold yellow] [red]{site_constant.SITE_NAME}[/red] → [cyan]{select_title.name}[/cyan] \n")
+    console.print(f"\n[bold yellow]Download:[/bold yellow] [red]{site_constant.SITE_NAME}[/red] → [cyan]{select_title.name}[/cyan] \n")
+
+    # Initialize Crunchyroll client
+    client = CrunchyrollClient()
+    if not client.start():
+        console.print("[bold red]Failed to authenticate with Crunchyroll.[/bold red]")
+        return None, True
 
     # Define filename and path for the downloaded video
-    mp4_name = os_manager.get_sanitize_file(select_title.name) + ".mp4"
-    mp4_path = os.path.join(site_constant.MOVIE_FOLDER, mp4_name.replace(".mp4", ""))
+    mp4_name = os_manager.get_sanitize_file(select_title.name, select_title.date) + extension_output
+    mp4_path = os.path.join(site_constant.MOVIE_FOLDER, mp4_name.replace(extension_output, ""))
 
     # Generate mpd and license URLs
     url_id = select_title.get('url').split('/')[-1]
-    device_id = generate_device_id()
-    mpd_url, mpd_headers = get_playback_session(get_auth_token(device_id), device_id, url_id)
+    
+    # Get playback session
+    try:
+        playback_result = get_playback_session(client, url_id)
+        
+        # Check if access was denied (403)
+        if playback_result is None:
+            console.print("[bold red]✗ Access denied:[/bold red] This content requires a premium subscription")
+            return None, False
+        
+        mpd_url, mpd_headers, mpd_list_sub, token, audio_locale = playback_result
+        
+    except Exception as e:
+        console.print(f"[bold red]✗ Error getting playback session:[/bold red] {str(e)}")
+        return None, False
+    
+    # Parse playback token from mpd_url
     parsed_url = urlparse(mpd_url)
     query_params = parse_qs(parsed_url.query)
 
-    # Download the episode
+    # Download the film
     dash_process = DASH_Downloader(
-        cdm_device=get_wvd_path(),
         license_url='https://www.crunchyroll.com/license/v1/license/widevine',
         mpd_url=mpd_url,
+        mpd_sub_list=mpd_list_sub,
         output_path=os.path.join(mp4_path, mp4_name),
     )
     dash_process.parse_manifest(custom_headers=mpd_headers)
@@ -80,5 +101,11 @@ def download_film(select_title: MediaItem) -> str:
             os.remove(status['path'])
         except Exception: 
             pass
+
+    # Delete stream after download to avoid TOO_MANY_ACTIVE_STREAMS
+    playback_token = token or query_params.get('playbackGuid', [None])[0]
+    if playback_token:
+        client.delete_active_stream(url_id, playback_token)
+        console.print("[dim]✓ Playback session closed[/dim]")
 
     return status['path'], status['stopped']
