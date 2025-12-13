@@ -2,8 +2,6 @@
 
 <img src="https://i.postimg.cc/Y9t2XgB1/z562m3.png" alt="StreamingCommunity Logo" width="110" style="background: transparent;">
 
----
-
 [![PyPI Version](https://img.shields.io/pypi/v/streamingcommunity?logo=pypi&logoColor=white&labelColor=2d3748&color=3182ce&style=for-the-badge)](https://pypi.org/project/streamingcommunity/)
 [![Last Commit](https://img.shields.io/github/last-commit/Arrowar/StreamingCommunity?logo=git&logoColor=white&labelColor=2d3748&color=805ad5&style=for-the-badge)](https://github.com/Arrowar/StreamingCommunity/commits)
 [![Sponsor](https://img.shields.io/badge/💖_Sponsor-ea4aaa?style=for-the-badge&logo=github-sponsors&logoColor=white&labelColor=2d3748)](https://ko-fi.com/arrowar)
@@ -166,6 +164,20 @@ dash_process.get_status()
 ```
 
 See [DASH example](./Test/Downloads/DASH.py) for complete usage.
+
+<summary>Ⓜ️ MEGA</summary>
+
+```python
+mega = Mega_Downloader()
+m = mega.login()
+
+output_path = m.download_url(
+    url="https://mega.nz/file/0kgCWZZB#7u....",
+    dest_path=".\\prova.mp4"
+)
+```
+
+See [MEGA example](./Test/Downloads/MEGA.py) for complete usage.
 
 ---
 
