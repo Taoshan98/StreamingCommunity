@@ -227,9 +227,14 @@ class DASH_Downloader:
             
         return True
 
-    def download_and_decrypt(self, custom_headers=None, custom_payload=None):
+    def download_and_decrypt(self, custom_headers=None, query_params=None):
         """
         Download and decrypt video/audio streams. Skips download if file already exists.
+        
+        Args:
+            custom_headers (dict): Optional HTTP headers for the license request.
+            query_params (dict): Optional query parameters to append to the license URL.
+            license_data (str/bytes): Optional raw license data to bypass HTTP request.
         """
         if self.file_already_exists:
             console.print(f"[red]File already exists: {self.original_output_path}[/red]")
@@ -250,7 +255,7 @@ class DASH_Downloader:
             license_url=self.license_url,
             cdm_device_path=self.cdm_device,
             headers=custom_headers,
-            payload=custom_payload
+            query_params=query_params,
         )
 
         if not keys:
@@ -588,14 +593,11 @@ class DASH_Downloader:
                 self.output_file = new_filename
 
         # Display file information
-        if os.path.exists(output_file):
-            file_size = internet_manager.format_file_size(os.path.getsize(output_file))
-            duration = print_duration_table(output_file, description=False, return_string=True)
-            console.print(f"[yellow]Output [red]{os.path.abspath(output_file)} [cyan]with size [red]{file_size} [cyan]and duration [red]{duration}")
-        else:
-            console.print(f"[red]Output file not found: {output_file}")
-            self.error = f"Output file not found: {output_file}"
-            return None
+        file_size = internet_manager.format_file_size(os.path.getsize(output_file))
+        duration = print_duration_table(output_file, description=False, return_string=True)
+        console.print(f"[yellow]Output[white]: [red]{os.path.abspath(output_file)} \n"
+            f"  [cyan]with size[white]: [red]{file_size} \n"
+            f"      [cyan]and duration[white]: [red]{duration}")
 
         if CLEANUP_TMP:
             
@@ -613,7 +615,7 @@ class DASH_Downloader:
                 try:
                     os.rmdir(self.out_path)
 
-                except Exception as e:
+                except Exception:
                     pass
 
         # Verify the final file exists before returning

@@ -1,4 +1,4 @@
-# 09.06.24
+# 16.03.25
 
 
 # External libraries
@@ -26,41 +26,50 @@ table_show_manager = TVShowManager()
 def title_search(query: str) -> int:
     """
     Search for titles based on a search query.
-
+      
     Parameters:
         - query (str): The query to search for.
 
     Returns:
-        - int: The number of titles found.
+        int: The number of titles found.
     """
     media_search_manager.clear()
     table_show_manager.clear()
 
-    search_url = f"{site_constant.FULL_URL}/?story={query}&do=search&subaction=search"
+    search_url = "https://hd4me.net/lista-film"
     console.print(f"[cyan]Search url: [yellow]{search_url}")
 
     try:
         response = create_client(headers={'user-agent': get_userAgent()}).get(search_url)
         response.raise_for_status()
+        
     except Exception as e:
         console.print(f"[red]Site: {site_constant.SITE_NAME}, request search error: {e}")
         return 0
 
-    # Create soup and find table
+    # Create soup instance
     soup = BeautifulSoup(response.text, "html.parser")
 
-    for serie_div in soup.find_all('div', class_='entry'):
-        try:
-            serie_info = {
-                'name': serie_div.find('a').get("title").replace("streaming guardaserie", ""),
-                'type': 'tv',
-                'url': serie_div.find('a').get("href"),
-                'image': f"{site_constant.FULL_URL}/{serie_div.find('img').get('src')}"
-            }
-            media_search_manager.add_media(serie_info)
+    # Collect data from new structure
+    for li in soup.find_all("li"):
 
-        except Exception as e:
-            print(f"Error parsing a film entry: {e}")
+        a = li.find("a", href=True, id=True)
+        if not a:
+            continue
+
+        href = a["href"].strip()
+        title = a.get_text().split("–")[0].strip()
+        id_attr = a.get("id")
+
+        if query.lower() in title.lower():
+            media_dict = {
+                'id': id_attr,
+                'name': title,
+                'type': 'film',
+                'url': 'https://hd4me.net' + href,
+                'image': None
+            }
+            media_search_manager.add_media(media_dict)
 
     # Return the number of titles found
     return media_search_manager.get_length()

@@ -15,7 +15,7 @@ def get_playback_url(video_id: str, bearer_token: str, get_dash: bool, channel: 
         - video_id (str): ID of the video.
     """
     headers = {
-        'authorization': f'Bearer {bearer_token[channel]['key']}',
+        'authorization': f"Bearer {bearer_token[channel]['key']}",
         'user-agent': get_userAgent()
     }
 
